@@ -6,6 +6,10 @@ Tracks companies, the people at them, every touch, and what you owe them next.
 Built for ~5 people, on free tiers, with security enforced in the database rather
 than in application code.
 
+> **Picking this up cold?** Read [HANDOFF.md](HANDOFF.md) first — it records
+> current state, the outstanding blockers, and the traps that have already cost
+> time. [SETUP.md](SETUP.md) covers installing from scratch.
+
 ## Stack
 
 | Piece | Choice | Cost |

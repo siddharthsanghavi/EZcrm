@@ -6,6 +6,7 @@ import {
   STATUSES,
   TIER_STYLES,
   TIERS,
+  displayName,
   type Status,
 } from '@/lib/types';
 
@@ -18,6 +19,7 @@ type Search = {
   tier?: string;
   type?: string;
   region?: string;
+  owner?: string;
   q?: string;
   page?: string;
 };
@@ -39,7 +41,7 @@ export default async function CompaniesPage({
   searchParams: Promise<Search>;
 }) {
   const sp = await searchParams;
-  const { status, tier, type, region, q } = sp;
+  const { status, tier, type, region, owner, q } = sp;
   const page = Math.max(1, Number.parseInt(sp.page ?? '1', 10) || 1);
 
   const supabase = await serverClient();
@@ -47,7 +49,7 @@ export default async function CompaniesPage({
   let query = supabase
     .from('companies')
     .select(
-      'id, name, website, industry, status, interest, type, tier, city, region, contacts(count)',
+      'id, name, website, industry, status, interest, type, tier, city, region, owner_id, contacts(count), profiles!companies_owner_id_fkey(full_name, email)',
       { count: 'exact' },
     )
     // Tier 1 first, then Tier 2, and so on — the directory's own ranking is the
@@ -60,13 +62,17 @@ export default async function CompaniesPage({
   if (tier) query = query.eq('tier', tier);
   if (type) query = query.eq('type', type);
   if (region) query = query.eq('region', region);
+  // "none" is a real filter — the unassigned pile is the one people work from.
+  if (owner === 'none') query = query.is('owner_id', null);
+  else if (owner) query = query.eq('owner_id', owner);
   if (q) query = query.or(`name.ilike.%${q}%,city.ilike.%${q}%,industry.ilike.%${q}%`);
 
   // Distinct values for the dropdowns. Cheap enough at this size, and it means
   // the filters always reflect whatever is actually in the database.
-  const [{ data: companies, count, error }, { data: facets }] = await Promise.all([
+  const [{ data: companies, count, error }, { data: facets }, { data: members }] = await Promise.all([
     query,
     supabase.from('companies').select('type, region').limit(5000),
+    supabase.from('profiles').select('id, full_name, email').order('email'),
   ]);
 
   const types = [...new Set((facets ?? []).map((f) => f.type).filter(Boolean))].sort();
@@ -134,6 +140,19 @@ export default async function CompaniesPage({
             </Pill>
           ))}
 
+          <span className="ml-4 mr-1 text-xs font-medium text-black/40">Owner</span>
+          <Pill href={withFilter(sp, 'owner')} active={!owner}>
+            Anyone
+          </Pill>
+          {(members ?? []).map((m) => (
+            <Pill key={m.id} href={withFilter(sp, 'owner', m.id)} active={owner === m.id}>
+              {displayName(m)}
+            </Pill>
+          ))}
+          <Pill href={withFilter(sp, 'owner', 'none')} active={owner === 'none'}>
+            Unassigned
+          </Pill>
+
           <span className="ml-4 mr-1 text-xs font-medium text-black/40">Status</span>
           <Pill href={withFilter(sp, 'status')} active={!status}>
             Any
@@ -165,6 +184,14 @@ export default async function CompaniesPage({
                         {[c.type, c.city, c.industry].filter(Boolean).join(' · ')}
                       </div>
                     </div>
+
+                    {c.owner_id && (
+                      <span className="hidden shrink-0 text-xs text-black/45 md:block">
+                        {displayName(
+                          c.profiles as unknown as { full_name: string | null; email: string } | null,
+                        )}
+                      </span>
+                    )}
 
                     {contactCount > 0 && (
                       <span className="hidden shrink-0 text-xs text-black/40 sm:block">

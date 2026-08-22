@@ -84,6 +84,30 @@ export async function setCompanyStatus(formData: FormData) {
   revalidatePath(`/companies/${id}`);
 }
 
+/** Assign (or unassign) a club member as the owner of a company. */
+export async function setCompanyOwner(formData: FormData) {
+  const { supabase } = await requireMember();
+  const id = text(formData.get('id'));
+  if (!id) return;
+
+  const owner = text(formData.get('owner_id'));
+  await supabase.from('companies').update({ owner_id: owner }).eq('id', id);
+
+  revalidatePath(`/companies/${id}`);
+  revalidatePath('/companies');
+  revalidatePath('/pipeline');
+}
+
+/** Assign a task to a club member. */
+export async function setTaskAssignee(formData: FormData) {
+  const { supabase } = await requireMember();
+  const id = text(formData.get('id'));
+  if (!id) return;
+
+  await supabase.from('tasks').update({ assignee_id: text(formData.get('assignee_id')) }).eq('id', id);
+  revalidatePath('/tasks');
+}
+
 export async function deleteCompany(formData: FormData) {
   const { supabase } = await requireMember();
   const id = text(formData.get('id'));

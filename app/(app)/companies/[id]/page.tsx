@@ -7,10 +7,12 @@ import {
   STATUS_STYLES,
   STATUSES,
   TIER_STYLES,
+  displayName,
   type Company,
   type Status,
 } from '@/lib/types';
 import { CompanyForm } from '@/components/company-form';
+import { OwnerPicker } from '@/components/owner-picker';
 import { ActivityComposer } from '@/components/activity-composer';
 import { ContactForm } from '@/components/contact-form';
 import { QuickTaskForm } from '@/components/quick-task-form';
@@ -32,8 +34,9 @@ export default async function CompanyPage({
   const { data: company } = await supabase.from('companies').select('*').eq('id', id).maybeSingle();
   if (!company) notFound();
 
-  const [{ data: contacts }, { data: activities }, { data: tasks }] = await Promise.all([
-    supabase.from('contacts').select('*').eq('company_id', id).order('created_at'),
+  const [{ data: contacts }, { data: activities }, { data: tasks }, { data: members }, { data: history }] =
+    await Promise.all([
+      supabase.from('contacts').select('*').eq('company_id', id).order('created_at'),
     supabase
       .from('activities')
       .select('*, profiles(full_name, email)')
@@ -45,6 +48,13 @@ export default async function CompanyPage({
       .eq('company_id', id)
       .order('done')
       .order('due_date', { nullsFirst: false }),
+    supabase.from('profiles').select('id, full_name, email').order('email'),
+    supabase
+      .from('status_events')
+      .select('from_status, to_status, changed_at, profiles(full_name, email)')
+      .eq('company_id', id)
+      .order('changed_at', { ascending: false })
+      .limit(20),
   ]);
 
   const today = new Date().toISOString().slice(0, 10);
@@ -108,6 +118,13 @@ export default async function CompanyPage({
               {[c.type, [c.city, c.region].filter(Boolean).join(' · ')].filter(Boolean).join(' — ')}
               {c.employees ? ` · ~${c.employees.toLocaleString()} employees` : ''}
             </div>
+
+            <div className="mt-1 text-sm">
+              <span className="text-black/45">Assigned to </span>
+              <span className={c.owner_id ? 'font-medium' : 'text-black/40'}>
+                {displayName((members ?? []).find((m) => m.id === c.owner_id))}
+              </span>
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
@@ -127,6 +144,7 @@ export default async function CompanyPage({
               </select>
               <button className="btn-ghost py-1.5">Update</button>
             </form>
+            <OwnerPicker companyId={id} ownerId={c.owner_id} members={members ?? []} />
             <Link href={`/companies/${id}?edit=1`} className="btn-ghost py-1.5">
               Edit
             </Link>
@@ -188,11 +206,9 @@ export default async function CompanyPage({
                       {a.body && (
                         <p className="mt-1.5 whitespace-pre-wrap text-sm text-black/70">{a.body}</p>
                       )}
-                      {author && (
-                        <p className="mt-1.5 text-xs text-black/35">
-                          {author.full_name ?? author.email}
-                        </p>
-                      )}
+                      <p className="mt-1.5 text-xs text-black/35">
+                        Logged by {displayName(author)}
+                      </p>
                     </li>
                   );
                 })}
@@ -250,6 +266,35 @@ export default async function CompanyPage({
             <div className="border-t border-black/10 p-4">
               <QuickTaskForm companyId={id} />
             </div>
+          </section>
+
+          <section className="card overflow-hidden">
+            <h2 className="border-b border-black/10 px-5 py-3 text-sm font-semibold">
+              Status history
+            </h2>
+            {history && history.length > 0 ? (
+              <ul className="divide-y divide-black/5">
+                {history.map((h, i) => {
+                  const who = h.profiles as unknown as
+                    | { full_name: string | null; email: string }
+                    | null;
+                  return (
+                    <li key={i} className="px-5 py-3 text-xs">
+                      <div className="text-black/70">
+                        {h.from_status
+                          ? `${STATUS_LABELS[h.from_status as Status]} → ${STATUS_LABELS[h.to_status as Status]}`
+                          : `Added as ${STATUS_LABELS[h.to_status as Status]}`}
+                      </div>
+                      <div className="mt-0.5 text-black/40">
+                        {displayName(who)} · {new Date(h.changed_at).toLocaleDateString()}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="px-5 py-4 text-xs text-black/45">No changes recorded yet.</p>
+            )}
           </section>
         </div>
       </div>

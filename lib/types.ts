@@ -105,3 +105,22 @@ export type Task = {
   contact_id: string | null;
   assignee_id: string | null;
 };
+
+export type StatusEvent = {
+  id: string;
+  company_id: string;
+  from_status: Status | null;
+  to_status: Status;
+  changed_by: string | null;
+  changed_at: string;
+};
+
+/** Which stages flow into which, for the pipeline diagram. */
+export const PIPELINE: Status[] = ['prospect', 'contacted', 'in_conversation', 'committed'];
+export const PIPELINE_EXITS: Status[] = ['declined', 'dormant'];
+
+/** Short label for whoever a record is assigned to. */
+export function displayName(p: { full_name: string | null; email: string } | null | undefined) {
+  if (!p) return 'Unassigned';
+  return p.full_name?.trim() || p.email.split('@')[0];
+}

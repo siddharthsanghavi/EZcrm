@@ -82,29 +82,26 @@ links won't work until you do.
 
 ## Importing the Georgia directory
 
-The prospect spreadsheet has already been converted — `data/companies-all.csv`
-(1,294 companies) and `data/companies-priority.csv` (205 Tier 1 + Tier 2).
+The Georgia directory is **already loaded in Supabase** — 1,263 companies,
+deduplicated and geocoded. There is no company data in this repo; Supabase is the
+single source of truth.
 
-**Start with the priority file.** 1,294 companies is more than a club can work,
-and the tiers are the directory author's own confidence ranking. Import the
-priority list, work it, then pull in the rest when you run dry.
+To get a copy, use **Import / Export → Companies CSV** in the app.
 
-Go to **Import / Export**, pick **Companies**, choose the CSV, review the
-preview, and import. Re-importing is safe: companies whose name already exists
-are skipped, so the full file later will only add the 1,089 you don't have.
+### Importing a new list
 
-To regenerate from an updated spreadsheet:
+Go to **Import / Export**, pick **Companies**, choose a CSV, review the preview,
+and import. Companies whose name already exists are skipped, so re-importing tops
+up rather than duplicating.
+
+To convert a spreadsheet first:
 
 ```bash
 python scripts/convert_directory.py path/to/directory.xlsx
 ```
 
-The converter reads only the **All Companies** sheet — the per-type sheets are
-strict subsets of it, so importing those too would just create duplicates. It
-maps Type, City, Region, Address, Phone, Confidence tier, and Employees into
-real columns you can filter by, and sets a starting `interest` from the company
-type: large manufacturers are tour targets, automation firms are sponsorship
-targets. Edit any of that per company afterwards.
+It writes CSVs to `data/`, which is gitignored — convert, import, and the files
+stay off GitHub.
 
 ## Adding club members
 

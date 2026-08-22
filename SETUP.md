@@ -54,8 +54,8 @@ node -v && npm -v && git --version
 ```
 
 > **Optional:** the CSV converter in `scripts/` needs Python 3 with `openpyxl`.
-> You only need it to regenerate `data/*.csv` from a new spreadsheet — the
-> converted CSVs are already committed, so skip this unless the source changes.
+> You only need it to convert a new spreadsheet into importable CSVs. Output
+> goes to `data/`, which is gitignored, so converted files never reach GitHub.
 >
 > ```bash
 > pip install openpyxl
@@ -201,15 +201,12 @@ Keeping the localhost entry means you can still develop locally.
 
 ## Importing the company directory
 
-Pre-converted CSVs are committed in `data/`:
+**The Georgia directory is already in Supabase** — 1,263 companies,
+deduplicated and geocoded. Running `schema.sql` on a *fresh* project gives you
+empty tables; the data lives in the existing project, not in this repo.
 
-| File | Rows | What it is |
-| --- | --- | --- |
-| `companies-priority.csv` | 205 | Tier 1 + Tier 2 — **start here** |
-| `companies-all.csv` | 1,294 | The full Georgia automation directory |
-
-**Import the priority file first.** 1,294 companies is more than a club can work,
-and the tiers are the directory author's own confidence ranking.
+No company data is committed here. Export a copy any time from **Import /
+Export → Companies CSV**.
 
 In the app: **Import / Export** → **Companies** → choose the CSV → review the
 preview → **Import**. Re-importing is safe — companies whose name already exists
@@ -319,7 +316,7 @@ supabase/
   schema.sql        Full schema + RLS policies — run this first
   migrations/       Incremental changes for existing databases
 scripts/            XLSX to CSV converter
-data/               Pre-converted company CSVs
+data/               Converted CSVs (gitignored — never committed)
 middleware.ts       Session refresh + route protection
 ```
 

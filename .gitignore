@@ -9,3 +9,10 @@ build/
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
+
+# Company data lives in Supabase, not in the repo. Export from the app's
+# Import / Export page when you need a copy.
+data/
+*.csv
+*.tsv
+*.xlsx

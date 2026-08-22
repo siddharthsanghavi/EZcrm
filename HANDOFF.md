@@ -25,10 +25,11 @@ The main outstanding risk is the email rate limit when onboarding teammates.
 | Vercel team slug | `sid-8952` |
 | Branch | `main` — clean, pushed, in sync |
 
-**The repo is public.** That was used deliberately to let Supabase fetch
-`data/companies-all.tsv` over HTTP during the import, but it means the club's
-prospect list is world-readable. Make it private when convenient — note that
-doing so breaks any future `http_get`-based import.
+**Company data is no longer in the repo.** Supabase is the single source of
+truth (1,263 companies); `data/` is gitignored.
+
+The repo is still **public**, and the deleted CSVs remain in git *history* — see
+"Purging data from history" below.
 
 ---
 
@@ -100,6 +101,26 @@ against real data. Still unexercised: **logging activity, creating tasks, adding
 contacts, and the Import / Export page**. Expect first-run bugs there.
 
 ---
+
+## Purging data from history
+
+`data/` was removed from the working tree, but **git keeps deleted files in
+history**. On a public repo the old CSVs stay fetchable at their previous
+commits, and GitHub may serve them for a while even after a rewrite.
+
+Simplest fix: **make the repo private** (Settings → General → Change visibility).
+That ends public access without touching history.
+
+To actually erase them — destructive, rewrites every commit hash, and everyone
+must re-clone:
+
+```bash
+pipx run git-filter-repo --path data/ --invert-paths --force
+```
+
+Then `git push --force origin main`. Only worth it if the repo must stay public
+AND the list must be secret. Note the original spreadsheet was never committed,
+so only the derived CSV/TSV files are involved.
 
 ## Map and geocoding
 

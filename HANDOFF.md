@@ -1,6 +1,6 @@
 # EZcrm — Handoff
 
-State of play as of **2026-08-20**. Read this first if you're picking the project
+State of play as of **2026-08-21**. Read this first if you're picking the project
 up cold. [SETUP.md](SETUP.md) covers installation; this covers *where things
 actually stand and what bites*.
 
@@ -8,8 +8,8 @@ actually stand and what bites*.
 
 ## The one-line summary
 
-The app is built, deployed, and publicly reachable. **Nobody has ever completed
-a sign-in.** One dashboard setting is blocking it.
+Live, working, and in use. Sign-in works, 1,263 companies are loaded and mapped.
+The main outstanding risk is the email rate limit when onboarding teammates.
 
 ---
 
@@ -17,59 +17,37 @@ a sign-in.** One dashboard setting is blocking it.
 
 | Thing | Value |
 | --- | --- |
-| Live app | https://e-zcrm.vercel.app |
-| GitHub | https://github.com/siddharthsanghavi/EZcrm |
+| Live app | **https://ksusmecrm.vercel.app** |
+| Old alias | `e-zcrm.vercel.app` (307s to the above; do not share) |
+| GitHub | https://github.com/siddharthsanghavi/EZcrm — **currently PUBLIC** |
 | Supabase project | `SMECRM`, ref `hhxwflceupkphishfbbo`, region `ca-central-1` |
 | Supabase URL | `https://hhxwflceupkphishfbbo.supabase.co` |
 | Vercel team slug | `sid-8952` |
 | Branch | `main` — clean, pushed, in sync |
 
-Commits so far:
-
-```
-69931c9  Surface why sign-in failed instead of silently bouncing to /login
-1f873a9  Fail legibly when Supabase env vars are missing
-470362a  EZcrm: club outreach CRM for tours and sponsorships
-```
+**The repo is public.** That was used deliberately to let Supabase fetch
+`data/companies-all.tsv` over HTTP during the import, but it means the club's
+prospect list is world-readable. Make it private when convenient — note that
+doing so breaks any future `http_get`-based import.
 
 ---
 
-## BLOCKER — do this first
+## Outstanding
 
-**Supabase Site URL is still `http://localhost:3000`.**
-
-Every magic link therefore redirects to localhost instead of the live app. This
-is the entire reason sign-in has never succeeded.
-
-Fix at **Authentication → URL Configuration**
-([link](https://supabase.com/dashboard/project/hhxwflceupkphishfbbo/auth/url-configuration)):
-
-- **Site URL:** `https://e-zcrm.vercel.app`
-- **Redirect URLs:** `https://e-zcrm.vercel.app/auth/callback`
-  (optionally also `http://localhost:3000/auth/callback` for local dev)
-
-There is **no API for this** — Supabase exposes no auth-config endpoint, and the
-Vercel MCP connector cannot see this project. It must be clicked by the owner.
-
-If a redirect URL isn't on the allowlist, Supabase does not error — it silently
-falls back to Site URL. That silent fallback burned several hours.
-
----
-
-## Second blocker — email rate limit
-
-Supabase's built-in email sender is throttled to a handful per hour and is
-explicitly not for production. With ~5 members requesting links, this will be
-hit constantly.
-
-**Fix before onboarding anyone:** Authentication → Emails → SMTP Settings →
-Enable Custom SMTP.
-
-- **Resend** — 3,000/month free, but until a domain is verified it can only send
-  to the account owner's own address. Only viable if the club has a domain.
-- **Gmail SMTP** — `smtp.gmail.com:587`, username = the Gmail address, password =
-  a Google **App Password** (needs 2-Step Verification). Sends to anyone,
-  ~500/day. Realistically the right call for a student club.
+1. **Email rate limit.** Supabase's built-in sender allows only a handful per
+   hour and is not meant for production. With five members requesting links this
+   will bite. Fix with custom SMTP: Gmail (`smtp.gmail.com:587` + a Google App
+   Password) sends to anyone; Resend needs a verified domain first.
+2. **One teammate has not completed sign-in.** `val.93002@gmail.com` has an
+   account and a profile but `last_sign_in_at` is null — their original link was
+   consumed while Site URL still pointed elsewhere. They just need a fresh link.
+3. **Email template still uses the PKCE link.** `/auth/confirm` exists and works;
+   pointing the Magic Link template at
+   `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email` makes
+   sign-in work from any browser. Without it, opening a link in a mail app's
+   in-app browser fails with a PKCE verifier error.
+4. **Import / Export page has never been exercised** — the 1,263 companies were
+   loaded by SQL, not through the UI.
 
 ---
 
@@ -86,14 +64,13 @@ select
   (select count(*) from public.companies)                             as companies;
 ```
 
-As of writing: 1 auth user, **0 ever signed in**, 1 profile, 3 allowlisted,
-0 companies/contacts/activities/tasks.
+As of writing: 2 auth users (1 has signed in), 2 profiles, 3 allowlisted,
+**1,263 companies** (1,247 geocoded), 0 contacts/activities/tasks.
 
-The single profile is `role = 'member'`. To make the owner an admin (needed to
-delete others' records and manage the allowlist):
+The owner is already `role = 'admin'`. To promote someone else:
 
 ```sql
-update profiles set role = 'admin' where email = 'siddharth.sanghavi.360@gmail.com';
+update profiles set role = 'admin' where email = 'teammate@club.org';
 ```
 
 ---
@@ -109,7 +86,7 @@ update profiles set role = 'admin' where email = 'siddharth.sanghavi.360@gmail.c
 - **Supabase security advisor: 0 findings.**
 - **Fails closed** — with auth unreachable, every protected route redirects to
   login rather than rendering.
-- **Production is public** — no Vercel login wall on `e-zcrm.vercel.app`;
+- **Production is public** — no Vercel login wall on `ksusmecrm.vercel.app`;
   protected routes redirect to `/login`.
 - **CSV pipeline** — the real 1,294-row file was replayed through the exact
   parser and mapping code: 0 parse errors, 0 skipped, all 13 fields mapped,
@@ -118,9 +95,9 @@ update profiles set role = 'admin' where email = 'siddharth.sanghavi.360@gmail.c
 
 ## What is NOT verified
 
-Everything behind a session. **No one has ever been signed in**, so the
-dashboard, company pages, activity logging, tasks, and the actual import have
-never run against real data. Expect first-run bugs there.
+Sign-in, the dashboard, the company list and the map are all confirmed working
+against real data. Still unexercised: **logging activity, creating tasks, adding
+contacts, and the Import / Export page**. Expect first-run bugs there.
 
 ---
 
@@ -141,9 +118,9 @@ the map. 16 rows are permanently unplottable — their city is literally
 
 ## Traps — each of these cost real time
 
-**Vercel preview URLs are SSO-walled.** `e-zcrm-<hash>-sid-8952.vercel.app`
+**Vercel preview URLs are SSO-walled.** `ksusmecrm-<hash>-sid-8952.vercel.app`
 redirects to `vercel.com/sso-api` — anyone you share it with is asked to log into
-*your* Vercel account. Only share `https://e-zcrm.vercel.app`. Signing in from a
+*your* Vercel account. Only share `https://ksusmecrm.vercel.app`. Signing in from a
 preview URL also fails auth, because the callback host won't match Supabase's
 allowlist.
 
@@ -223,13 +200,10 @@ first.
 
 ## Next actions, in order
 
-1. Set Supabase **Site URL** to `https://e-zcrm.vercel.app` *(blocker)*.
-2. Configure **custom SMTP** so the email limit stops interfering.
-3. Sign in at `https://e-zcrm.vercel.app` — confirm `last_sign_in_at` populates.
-4. Promote the owner to `admin`.
-5. Import `data/companies-priority.csv` (205 rows) via **Import / Export**, then
-   `companies-all.csv` (1,294) once satisfied. Re-import is safe — existing names
-   are skipped.
-6. Exercise the authenticated paths for the first time: company detail, activity
-   logging, tasks, filters, export.
-7. Move the repo out of OneDrive.
+1. Configure **custom SMTP** so the email limit stops interfering.
+2. Point the **Magic Link email template** at `/auth/confirm` (see above).
+3. Get the remaining teammates signed in.
+4. Exercise the untested paths: log an activity, add a task, add a contact, and
+   run a small CSV through Import / Export.
+5. Make the GitHub repo **private**.
+6. Move the working copy out of OneDrive.

@@ -34,17 +34,39 @@
   }
 }
 
-/* Leaflet popup styling — Leaflet injects raw HTML, so these are plain CSS
+/* Leaflet renders popups and cluster icons as raw HTML, so these are plain CSS
    rather than Tailwind classes. */
 .leaflet-popup-content .pop { font-size: 13px; line-height: 1.45; }
-.leaflet-popup-content .pop .sub { color: rgba(0, 0, 0, 0.5); font-size: 11px; margin-top: 2px; }
-.leaflet-popup-content .pop .badges { margin-top: 6px; display: flex; gap: 4px; }
-.leaflet-popup-content .pop .b {
-  border-radius: 999px; padding: 1px 7px; font-size: 10px; font-weight: 600;
+.leaflet-popup-content .pop .title {
+  font-weight: 600; font-size: 14px; color: #12151a; text-decoration: none;
 }
-.leaflet-popup-content .pop .b1 { background: #ede9fe; color: #5b21b6; }
-.leaflet-popup-content .pop .b2 { background: #e0f2fe; color: #075985; }
-.leaflet-popup-content .pop ul { margin: 8px 0 6px; padding-left: 16px; }
-.leaflet-popup-content .pop li { margin: 1px 0; }
-.leaflet-popup-content .pop li.more { color: rgba(0, 0, 0, 0.45); list-style: none; margin-left: -16px; }
-.leaflet-popup-content .pop a { color: #12151a; text-decoration: underline; font-size: 12px; }
+.leaflet-popup-content .pop .title:hover { text-decoration: underline; }
+.leaflet-popup-content .pop .sub { color: rgba(0,0,0,0.5); font-size: 11px; margin-top: 3px; }
+.leaflet-popup-content .pop .badges { margin-top: 7px; display: flex; flex-wrap: wrap; gap: 4px; }
+.leaflet-popup-content .pop .b {
+  border-radius: 999px; padding: 1px 8px; font-size: 10px; font-weight: 600;
+  background: color-mix(in srgb, var(--c, #64748b) 15%, white); color: var(--c, #64748b);
+}
+.leaflet-popup-content .pop .b-status { --c: #475569; text-transform: capitalize; }
+.leaflet-popup-content .pop .b-owner  { --c: #0f766e; }
+.leaflet-popup-content .pop .approx { margin-top: 6px; font-size: 10px; color: rgba(0,0,0,0.4); }
+.leaflet-popup-content .pop .go {
+  display: inline-block; margin-top: 8px; font-size: 12px; color: #12151a; text-decoration: underline;
+}
+
+.ez-cluster {
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 999px; font-weight: 700; font-size: 12px; color: #fff;
+  background: var(--c); border: 2px solid rgba(255,255,255,0.85);
+  box-shadow: 0 1px 6px rgba(0,0,0,0.28);
+}
+
+.ez-area {
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 999px; font-weight: 700; font-size: 12px; color: #fff;
+  background: color-mix(in srgb, var(--c) 88%, transparent);
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+.ez-area:hover { background: var(--c); }

@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import type { MapPoint } from '@/components/company-map';
+import type { MapCompany } from '@/components/company-map';
 
 /**
  * Client-side wrapper so the map can be loaded with `ssr: false`.
@@ -11,12 +11,12 @@ import type { MapPoint } from '@/components/company-map';
 const CompanyMap = dynamic(() => import('@/components/company-map').then((m) => m.CompanyMap), {
   ssr: false,
   loading: () => (
-    <div className="flex h-[70vh] items-center justify-center rounded-lg border border-black/10 text-sm text-black/40">
+    <div className="flex h-[72vh] items-center justify-center rounded-lg border border-black/10 text-sm text-black/40">
       Loading map…
     </div>
   ),
 });
 
-export function MapShell({ points }: { points: MapPoint[] }) {
-  return <CompanyMap points={points} />;
+export function MapShell({ companies }: { companies: MapCompany[] }) {
+  return <CompanyMap companies={companies} />;
 }

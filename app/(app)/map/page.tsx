@@ -1,95 +1,126 @@
 import Link from 'next/link';
 import { serverClient } from '@/lib/supabase';
 import { MapShell } from '@/components/map-shell';
-import type { MapPoint } from '@/components/company-map';
+import type { MapCompany } from '@/components/company-map';
+import { STATUSES, TIERS, displayName, type Status } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
-type Row = {
-  name: string;
-  city: string | null;
-  region: string | null;
-  tier: string | null;
-  latitude: number | null;
-  longitude: number | null;
-};
+type Search = { tier?: string; status?: string; owner?: string };
 
-export default async function MapPage() {
+export default async function MapPage({ searchParams }: { searchParams: Promise<Search> }) {
+  const { tier, status, owner } = await searchParams;
   const supabase = await serverClient();
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('companies')
-    .select('name, city, region, tier, latitude, longitude')
+    .select(
+      'id, name, city, county, area, region, type, tier, status, latitude, longitude, geo_precision, owner_id, profiles!companies_owner_id_fkey(full_name, email)',
+    )
     .not('latitude', 'is', null)
     .limit(5000);
 
-  const rows = (data ?? []) as Row[];
+  if (tier) query = query.eq('tier', tier);
+  if (status && STATUSES.includes(status as Status)) query = query.eq('status', status);
+  if (owner === 'none') query = query.is('owner_id', null);
+  else if (owner) query = query.eq('owner_id', owner);
 
-  // Group by coordinate: one pin per town, rather than 1,200 pins stacked on
-  // top of each other.
-  const byPlace = new Map<string, MapPoint>();
-  for (const r of rows) {
-    if (r.latitude === null || r.longitude === null) continue;
-    const key = `${r.latitude.toFixed(4)},${r.longitude.toFixed(4)}`;
+  const [{ data, error }, { count: totalCount }, { data: members }] = await Promise.all([
+    query,
+    supabase.from('companies').select('id', { count: 'exact', head: true }),
+    supabase.from('profiles').select('id, full_name, email').order('email'),
+  ]);
 
-    let p = byPlace.get(key);
-    if (!p) {
-      p = {
-        city: r.city ?? 'Unknown',
-        region: r.region,
-        latitude: r.latitude,
-        longitude: r.longitude,
-        total: 0,
-        tier1: 0,
-        tier2: 0,
-        names: [],
-      };
-      byPlace.set(key, p);
-    }
+  const companies: MapCompany[] = (data ?? []).map((r) => ({
+    id: r.id as string,
+    name: r.name as string,
+    city: r.city as string | null,
+    county: r.county as string | null,
+    area: r.area as string | null,
+    region: r.region as string | null,
+    type: r.type as string | null,
+    tier: r.tier as string | null,
+    status: r.status as string,
+    owner: r.owner_id
+      ? displayName(r.profiles as unknown as { full_name: string | null; email: string } | null)
+      : null,
+    latitude: r.latitude as number,
+    longitude: r.longitude as number,
+    precise: r.geo_precision === 'address',
+  }));
 
-    p.total += 1;
-    if (r.tier === 'Tier 1') p.tier1 += 1;
-    if (r.tier === 'Tier 2') p.tier2 += 1;
-    if (p.names.length < 8) p.names.push(r.name);
-  }
-
-  const points = [...byPlace.values()].sort((a, b) => b.total - a.total);
-
-  const { count: totalCompanies } = await supabase
-    .from('companies')
-    .select('id', { count: 'exact', head: true });
-
-  const missing = (totalCompanies ?? 0) - rows.length;
+  const missing = (totalCount ?? 0) - companies.length;
+  const sp: Search = { tier, status, owner };
+  const link = (key: keyof Search, value?: string) => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(sp)) if (v && k !== key) p.set(k, v);
+    if (value) p.set(key, value);
+    const qs = p.toString();
+    return `/map${qs ? `?${qs}` : ''}`;
+  };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Map</h1>
           <p className="mt-1 text-sm text-black/55">
-            {rows.length.toLocaleString()} companies across {points.length} towns
-            {missing > 0 && (
-              <>
-                {' '}
-                · <span className="text-black/40">{missing} not yet located</span>
-              </>
+            {companies.length.toLocaleString()} companies shown
+            {missing > 0 && !tier && !status && !owner && (
+              <> · <span className="text-black/40">{missing} without a location</span></>
             )}
           </p>
         </div>
-        <Link href="/companies?tier=Tier+1" className="btn-ghost">
-          Tier 1 list
-        </Link>
+      </div>
+
+      <div className="card flex flex-wrap items-center gap-1 p-3">
+        <span className="mr-1 text-xs font-medium text-black/40">Tier</span>
+        <Pill href={link('tier')} active={!tier}>Any</Pill>
+        {TIERS.map((t) => (
+          <Pill key={t} href={link('tier', t)} active={tier === t}>{t}</Pill>
+        ))}
+
+        <span className="ml-4 mr-1 text-xs font-medium text-black/40">Owner</span>
+        <Pill href={link('owner')} active={!owner}>Anyone</Pill>
+        {(members ?? []).map((m) => (
+          <Pill key={m.id} href={link('owner', m.id)} active={owner === m.id}>
+            {displayName(m)}
+          </Pill>
+        ))}
+        <Pill href={link('owner', 'none')} active={owner === 'none'}>Unassigned</Pill>
       </div>
 
       {error && <p className="text-sm text-rose-700">{error.message}</p>}
 
-      {points.length === 0 ? (
+      {companies.length === 0 ? (
         <div className="card px-5 py-12 text-center text-sm text-black/50">
-          No companies have coordinates yet.
+          Nothing to show.{' '}
+          <Link href="/map" className="underline">Clear filters</Link>
         </div>
       ) : (
-        <MapShell points={points} />
+        <MapShell companies={companies} />
       )}
     </div>
+  );
+}
+
+function Pill({
+  href,
+  active,
+  children,
+}: {
+  href: string;
+  active: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
+        active ? 'bg-ink text-white' : 'bg-black/[0.05] text-black/60 hover:bg-black/10'
+      }`}
+    >
+      {children}
+    </Link>
   );
 }

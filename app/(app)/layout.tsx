@@ -5,6 +5,7 @@ import { currentProfile } from '@/lib/supabase';
 const NAV = [
   { href: '/', label: 'Dashboard' },
   { href: '/companies', label: 'Companies' },
+  { href: '/map', label: 'Map' },
   { href: '/contacts', label: 'Contacts' },
   { href: '/tasks', label: 'Tasks' },
   { href: '/import', label: 'Import / Export' },

@@ -33,3 +33,18 @@
     @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
   }
 }
+
+/* Leaflet popup styling — Leaflet injects raw HTML, so these are plain CSS
+   rather than Tailwind classes. */
+.leaflet-popup-content .pop { font-size: 13px; line-height: 1.45; }
+.leaflet-popup-content .pop .sub { color: rgba(0, 0, 0, 0.5); font-size: 11px; margin-top: 2px; }
+.leaflet-popup-content .pop .badges { margin-top: 6px; display: flex; gap: 4px; }
+.leaflet-popup-content .pop .b {
+  border-radius: 999px; padding: 1px 7px; font-size: 10px; font-weight: 600;
+}
+.leaflet-popup-content .pop .b1 { background: #ede9fe; color: #5b21b6; }
+.leaflet-popup-content .pop .b2 { background: #e0f2fe; color: #075985; }
+.leaflet-popup-content .pop ul { margin: 8px 0 6px; padding-left: 16px; }
+.leaflet-popup-content .pop li { margin: 1px 0; }
+.leaflet-popup-content .pop li.more { color: rgba(0, 0, 0, 0.45); list-style: none; margin-left: -16px; }
+.leaflet-popup-content .pop a { color: #12151a; text-decoration: underline; font-size: 12px; }

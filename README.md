@@ -80,13 +80,11 @@ Configuration**, set the site URL to your Vercel domain and add
 `https://your-app.vercel.app/auth/callback` to the redirect allowlist — magic
 links won't work until you do.
 
-## Importing the Georgia directory
+## Getting your data in
 
-The Georgia directory is **already loaded in Supabase** — 1,263 companies,
-deduplicated and geocoded. There is no company data in this repo; Supabase is the
-single source of truth.
-
-To get a copy, use **Import / Export → Companies CSV** in the app.
+No company data lives in this repo — Supabase is the single source of truth and
+`data/` is gitignored. Load your own list through **Import / Export**, and export
+a CSV from the same page whenever you want a copy.
 
 ### Importing a new list
 

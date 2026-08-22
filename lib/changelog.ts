@@ -20,7 +20,7 @@ export const CHANGELOG: Change[] = [
     title: 'Bulk actions, member admin, and this guide',
     notes: [
       'Select companies with the checkboxes and assign them, or move their status, in one go.',
-      'Members page: add and remove people, set admins, and choose your own display name — no more SQL.',
+      'Members page: add and remove people, set admins, and choose your own display name.',
       'This guide, which updates whenever the app does.',
     ],
   },
@@ -37,18 +37,17 @@ export const CHANGELOG: Change[] = [
     date: '2026-08-21',
     title: 'Assignment, status history, and the pipeline chart',
     notes: [
-      'Companies can be assigned to a club member, and filtered by who owns them.',
+      'Companies can be assigned to a member, and filtered by who owns them.',
       'Every status change records who made it and when; see it on the company page.',
       'New Pipeline tab: a live flowchart of where everything stands.',
     ],
   },
   {
     date: '2026-08-21',
-    title: 'The Georgia directory, cleaned up',
+    title: 'Company directory imported',
     notes: [
-      '1,263 companies loaded, de-duplicated, and placed on the map.',
-      'Data centers and warehouse-automation sites added, including Amazon Stone Mountain, which runs public tours.',
-      'Siemens Pendergrass added as Tier 1 — they make the PLCs.',
+      'Prospect list loaded, de-duplicated, and placed on the map.',
+      'CSV import and export for getting data in and out.',
     ],
   },
 ];

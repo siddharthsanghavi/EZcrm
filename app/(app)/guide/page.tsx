@@ -8,8 +8,8 @@ export const dynamic = 'force-dynamic';
 export default async function GuidePage() {
   const supabase = await serverClient();
 
-  // Real numbers, so the guide describes the club's actual data rather than an
-  // idealised example.
+  // Live numbers, so the guide describes real data rather than an idealised
+  // example.
   const [{ count: companies }, { count: tier1 }, { count: mine }] = await Promise.all([
     supabase.from('companies').select('id', { count: 'exact', head: true }),
     supabase.from('companies').select('id', { count: 'exact', head: true }).eq('tier', 'Tier 1'),
@@ -28,14 +28,14 @@ export default async function GuidePage() {
       <section className="card p-6">
         <h2 className="text-sm font-semibold">What this is for</h2>
         <p className="mt-2 text-sm leading-relaxed text-black/70">
-          We&apos;re contacting Georgia companies to ask for two things:{' '}
+          We contact companies to ask for two things:{' '}
           <strong>plant tours</strong> and <strong>sponsorship</strong>. This app keeps track of who
           we&apos;ve approached, what was said, and what happens next — so two people don&apos;t
           email the same company, and nothing gets quietly forgotten.
         </p>
         <p className="mt-3 text-sm leading-relaxed text-black/70">
-          There are currently <strong>{(companies ?? 0).toLocaleString()}</strong> companies loaded,
-          of which <strong>{tier1 ?? 0}</strong> are Tier 1 — the ones most worth calling first.
+          There are <strong>{(companies ?? 0).toLocaleString()}</strong> companies loaded, of which{' '}
+          <strong>{tier1 ?? 0}</strong> are Tier 1 — the ones most worth calling first.
         </p>
       </section>
 
@@ -128,9 +128,9 @@ export default async function GuidePage() {
       <section className="card p-6">
         <h2 className="text-sm font-semibold">Tiers — what they mean</h2>
         <p className="mt-2 text-sm leading-relaxed text-black/70">
-          Tiers came with the source directory and rank how promising a company is for us.{' '}
-          <strong>Tier 1</strong> is the shortlist — automation firms and integrators who&apos;d
-          benefit from meeting engineering students. <strong>Tier 2</strong> is strong, and{' '}
+          Tiers come from the source list and rank how promising a company is.{' '}
+          <strong>Tier 1</strong> is the shortlist — the best fits, worth calling first.{' '}
+          <strong>Tier 2</strong> is strong, and{' '}
           <strong>Tier 3</strong> is worth a try. <strong>Reference</strong> is the long tail: real
           companies, but nobody has vetted them as good targets.
         </p>

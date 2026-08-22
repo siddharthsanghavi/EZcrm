@@ -42,7 +42,7 @@ export default async function MembersPage() {
           <input
             name="full_name"
             defaultValue={me?.full_name ?? ''}
-            placeholder="e.g. Siddharth S"
+            placeholder="Your name"
             className="field max-w-xs"
           />
           <button className="btn-ghost">Save</button>

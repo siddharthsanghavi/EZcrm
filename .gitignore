@@ -16,3 +16,7 @@ data/
 *.csv
 *.tsv
 *.xlsx
+
+# Deployment-specific notes, kept out of the shared repo.
+DEPLOYMENT.local.md
+*.local.md

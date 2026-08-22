@@ -78,8 +78,8 @@ create table companies (
   interest    text[] not null default '{}',   -- 'tour', 'sponsorship'
   notes       text,
 
-  -- Directory fields. These come from the Georgia automation prospect list and
-  -- are what you actually filter by when picking who to call this week.
+  -- Directory fields, populated from an imported prospect list. These are what
+  -- you filter by when picking who to call this week.
   type        text,          -- OEM, Integrator, Large Manufacturer, Machine Shop…
   tier        text,          -- Tier 1..3, or Reference. Tier 1 = call first.
   -- Sorting on `tier` alphabetically would put "Reference" above "Tier 1",

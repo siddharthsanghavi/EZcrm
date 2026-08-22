@@ -66,7 +66,7 @@ node -v && npm -v && git --version
 ## Part B — Get the code
 
 ```bash
-git clone https://github.com/siddharthsanghavi/EZcrm.git
+git clone <your-fork-url>
 ```
 
 > ⚠️ **Do not clone into OneDrive, Dropbox, or iCloud.** Sync services corrupt
@@ -201,12 +201,9 @@ Keeping the localhost entry means you can still develop locally.
 
 ## Importing the company directory
 
-**The Georgia directory is already in Supabase** — 1,263 companies,
-deduplicated and geocoded. Running `schema.sql` on a *fresh* project gives you
-empty tables; the data lives in the existing project, not in this repo.
-
-No company data is committed here. Export a copy any time from **Import /
-Export → Companies CSV**.
+`schema.sql` creates empty tables — no company data is committed to this repo.
+Load your own list through **Import / Export → Companies**, and export a CSV from
+the same page whenever you want a copy.
 
 In the app: **Import / Export** → **Companies** → choose the CSV → review the
 preview → **Import**. Re-importing is safe — companies whose name already exists

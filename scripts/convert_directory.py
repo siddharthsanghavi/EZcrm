@@ -1,6 +1,9 @@
 """
-Convert the Georgia automation directory spreadsheet into a CSV that EZcrm's
-importer understands.
+Convert a prospect-directory spreadsheet into a CSV that EZcrm's importer
+understands.
+
+Column names below match one particular source workbook — adjust the mapping in
+`main()` for yours.
 
     python scripts/convert_directory.py <path-to-xlsx> [outdir]
 
@@ -16,9 +19,9 @@ import openpyxl
 
 SHEET = "All Companies"
 
-# A club wants two different things from these companies, and which one depends
-# on what the company is. Big plants have floors worth walking; the automation
-# firms are the ones with a marketing budget. Both are editable after import.
+# Seed each company with what you'd plausibly want from it, based on its type.
+# Adjust for your own categories — this is only a starting guess, and every
+# value is editable after import.
 INTEREST_BY_TYPE = {
     "Large Manufacturer": "tour",
     "OEM": "sponsorship;tour",
@@ -111,9 +114,9 @@ def main() -> int:
             writer.writerows(records)
         print(f"  {len(records):5d}  {path}")
 
-    # The full list, plus a starter file. 1295 companies is more than a club can
-    # work; the tiers are the author's own confidence ranking, so Tier 1 and 2
-    # are the ones actually worth calling first.
+    # The full list, plus a shortlist. A big directory is more than a club can
+    # work through; the tiers are the source's own confidence ranking, so Tier 1
+    # and Tier 2 are the ones worth calling first.
     priority = [r for r in out if r["tier"] in ("Tier 1", "Tier 2")]
 
     print(f"\nParsed {len(out)} companies ({skipped_dupes} duplicate name(s) dropped)\n")

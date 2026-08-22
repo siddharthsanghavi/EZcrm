@@ -12,17 +12,29 @@ function LoginForm() {
   const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [message, setMessage] = useState('');
 
-  // Show whatever /auth/callback couldn't finish.
+  // Show whatever the callback couldn't finish — in words a club member can act
+  // on. Supabase's own messages are written for developers ("PKCE code verifier
+  // not found in storage…"), which is alarming and unactionable for everyone else.
   useEffect(() => {
     const err = params.get('error');
     if (!err) return;
 
+    const friendly = (raw: string) => {
+      const t = raw.toLowerCase();
+      if (t.includes('code verifier') || t.includes('pkce')) {
+        return 'This link was opened in a different browser than the one that asked for it — mail apps often open links in their own browser. Request a new link below, then copy it into this browser, or open your email here.';
+      }
+      if (t.includes('expired') || t.includes('invalid')) {
+        return 'That link has expired or was already used. Sign-in links work once and last an hour — request a fresh one below.';
+      }
+      if (raw === 'no-code' || raw === 'no-token') {
+        return 'That sign-in link was incomplete. Request a fresh one below.';
+      }
+      return raw;
+    };
+
     setState('error');
-    setMessage(
-      err === 'no-code'
-        ? 'That sign-in link came back without a code. Request a fresh one below.'
-        : err,
-    );
+    setMessage(friendly(err));
   }, [params]);
 
   // If Supabase used the implicit flow, the tokens arrive in the URL fragment,

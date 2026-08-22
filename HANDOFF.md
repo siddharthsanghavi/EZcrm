@@ -124,6 +124,21 @@ never run against real data. Expect first-run bugs there.
 
 ---
 
+## Map and geocoding
+
+Companies are plotted at **city** level, not street address. `geocache` holds one
+row per place name; `companies.latitude/longitude` are copied from it. Regenerate
+with `scripts/geocode_cities.py`, load into `geocache`, then:
+
+```sql
+update companies c set latitude = g.latitude, longitude = g.longitude
+from geocache g where g.place = c.city;
+```
+
+New companies get no coordinates until that runs, so they will be missing from
+the map. 16 rows are permanently unplottable — their city is literally
+`(verify)` or `Multiple GA`.
+
 ## Traps — each of these cost real time
 
 **Vercel preview URLs are SSO-walled.** `e-zcrm-<hash>-sid-8952.vercel.app`

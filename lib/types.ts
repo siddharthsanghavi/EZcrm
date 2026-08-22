@@ -156,6 +156,29 @@ export function isCold(status: Status, lastTouchAt: string | null): boolean {
   return days === null || days >= COLD_AFTER_DAYS;
 }
 
+/**
+ * Relative time at minute resolution — "6m ago", "2h ago".
+ *
+ * `sinceLabel` floors to whole days, which is right for "last touched" on a
+ * company but useless on an hourly chart: it renders a sign-in from two hours
+ * ago as "today", so the header reads "last today". Use this wherever the
+ * interesting scale is minutes and hours.
+ */
+export function preciseAgo(iso: string | null | undefined, now: number = Date.now()): string {
+  if (!iso) return 'never';
+  const secs = Math.floor((now - new Date(iso).getTime()) / 1000);
+
+  if (secs < 45) return 'just now';
+  if (secs < 90) return 'a minute ago';
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return `${Math.floor(days / 30)}mo ago`;
+}
+
 /** "12 days ago" / "never" — for a column that has to stay narrow. */
 export function sinceLabel(iso: string | null | undefined): string {
   const days = daysSince(iso);

@@ -138,6 +138,18 @@ allowlist, Supabase doesn't error — it ignores your `emailRedirectTo` and uses
 Site URL instead. A sign-in that lands somewhere unexpected almost always means
 this.
 
+**A Server Component formats dates in the SERVER's timezone, which is UTC on
+Vercel.** `toLocaleTimeString()` and `Date.now()` in a Server Component are not
+the reader's clock. The sign-in charts shipped with every hour label four hours
+out for anyone in Georgia — a 6:03pm sign-in rendered under "10 PM". Anything
+showing an absolute time or bucketing by day/hour has to be a Client Component
+that resolves `Date.now()` after mount (the trackers use a `useState(null)` +
+`useEffect` skeleton so the first render still matches the server).
+
+While you're there: bucket to the top of the local hour, not to "now minus n
+hours". Rolling buckets labelled as clock hours mean a bar marked 6 PM actually
+covers 5:52–6:52.
+
 **Magic links are bound to the browser that requested them.** The PKCE verifier
 lives in a cookie, so opening the link in a mail app's in-app browser fails.
 `/auth/confirm` (token-hash flow) avoids this entirely — point the Supabase

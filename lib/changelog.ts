@@ -22,6 +22,7 @@ export const CHANGELOG: Change[] = [
       'Admins can now see sign-ins on the Members page: who got in, when, and how many attempts failed.',
       'It shows links requested against sign-ins completed — the gap is people who wanted in and didn’t get there.',
       'Failed sign-ins are grouped by cause, so it’s clear whether the “opened in a different browser” problem is worth fixing.',
+      'Times show in your own timezone. The first version reported everything in UTC, so an evening sign-in appeared four hours late.',
     ],
   },
   {

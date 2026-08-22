@@ -1,4 +1,7 @@
-import { displayName, sinceLabel } from '@/lib/types';
+'use client';
+
+import { useEffect, useState } from 'react';
+import { displayName, preciseAgo } from '@/lib/types';
 
 export type LoginRow = {
   email: string | null;
@@ -32,13 +35,19 @@ export function LoginTracker({
   /** 'sent' sign-in emails over the same window, from auth_email_requests. */
   linksRequested: number;
 }) {
+  // CLIENT COMPONENT ON PURPOSE — see email-quota-tracker.tsx. Rendered on the
+  // server, every date here formatted in UTC, so an evening sign-in landed on
+  // the wrong day for anyone west of Greenwich.
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => setNow(Date.now()), []);
+
   const signedIn = rows.filter((r) => r.event === 'signed_in');
   const failed = rows.filter((r) => r.event === 'failed');
   const denied = rows.filter((r) => r.event === 'denied');
 
-  // Per-day buckets, oldest first.
+  // Per-day buckets, oldest first, aligned to local midnight.
   const DAYS = 7;
-  const startOfToday = new Date();
+  const startOfToday = new Date(now ?? Date.now());
   startOfToday.setHours(0, 0, 0, 0);
 
   const days = Array.from({ length: DAYS }, (_, i) => {
@@ -77,7 +86,11 @@ export function LoginTracker({
         </span>
       </div>
 
-      {rows.length === 0 ? (
+      {now === null ? (
+        <div className="px-5 py-4">
+          <div className="h-20 animate-pulse rounded bg-black/[0.04]" />
+        </div>
+      ) : rows.length === 0 ? (
         <p className="px-5 py-8 text-center text-sm text-black/45">
           Nothing recorded yet. Sign-ins are counted from the moment this was added, so this fills
           in as people come and go.
@@ -182,7 +195,7 @@ export function LoginTracker({
                     {r.method && r.method !== 'unknown' && <> · {METHOD_LABEL[r.method] ?? r.method}</>}
                   </span>
                 </span>
-                <span className="shrink-0 text-black/35">{sinceLabel(r.created_at)}</span>
+                <span className="shrink-0 text-black/35">{preciseAgo(r.created_at, now ?? Date.now())}</span>
               </li>
             ))}
           </ul>

@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { currentProfile, serverClient } from '@/lib/supabase';
 import { ACTIVITY_TYPES, INTERESTS, STATUSES } from '@/lib/types';
+import { normalizeViewQuery } from '@/lib/views';
 
 /**
  * Every action starts here. RLS would reject a non-member anyway, but failing
@@ -281,6 +282,45 @@ export async function bulkStatus(formData: FormData) {
 
   revalidatePath('/companies');
   revalidatePath('/pipeline');
+}
+
+// ----------------------------------------------------------- saved views
+
+export async function saveView(formData: FormData) {
+  const { profile, supabase } = await requireMember();
+
+  const name = text(formData.get('name'));
+  if (!name) return { error: 'Give the view a name.' };
+
+  // Only /companies has filters worth saving today. Pinning the path to a
+  // known list keeps a saved view from becoming an open redirect.
+  const path = formData.get('path') === '/map' ? '/map' : '/companies';
+
+  const { error } = await supabase.from('saved_views').insert({
+    name,
+    path,
+    query: normalizeViewQuery(text(formData.get('query')) ?? ''),
+    // An unticked checkbox sends nothing at all, so absence means private.
+    shared: formData.get('shared') === 'on',
+    owner_id: profile.id,
+  });
+
+  if (error) return { error: error.message };
+
+  revalidatePath(path);
+  return { ok: true };
+}
+
+export async function deleteSavedView(formData: FormData) {
+  const { supabase } = await requireMember();
+  const id = text(formData.get('id'));
+  if (!id) return;
+
+  // RLS decides whether this is allowed — a member can only drop their own.
+  await supabase.from('saved_views').delete().eq('id', id);
+
+  revalidatePath('/companies');
+  revalidatePath('/map');
 }
 
 // ------------------------------------------------------------ member admin

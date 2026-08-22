@@ -90,7 +90,7 @@ export function CsvImport() {
                    file:px-3 file:py-2 file:text-sm file:font-medium file:text-white"
       />
 
-      {parseError && <p className="mt-3 text-sm text-rose-700">{parseError}</p>}
+      {parseError && <p className="mt-3 text-sm text-danger">{parseError}</p>}
 
       {preview.length > 0 && (
         <div className="mt-5 space-y-3">
@@ -136,7 +136,7 @@ export function CsvImport() {
             {result.skipped > 0 && ` · skipped ${result.skipped}`}
           </p>
           {result.errors.length > 0 && (
-            <ul className="mt-1 list-inside list-disc text-xs text-rose-700">
+            <ul className="mt-1 list-inside list-disc text-xs text-danger">
               {result.errors.slice(0, 5).map((e, i) => (
                 <li key={i}>{e}</li>
               ))}

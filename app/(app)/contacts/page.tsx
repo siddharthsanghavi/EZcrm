@@ -66,7 +66,7 @@ export default async function ContactsPage({
 
                       <form action={deleteContact}>
                         <input type="hidden" name="id" value={c.id} />
-                        <button className="text-xs text-black/30 hover:text-rose-700">Delete</button>
+                        <button className="text-xs text-black/30 hover:text-danger">Delete</button>
                       </form>
                     </li>
                   );

@@ -27,7 +27,7 @@ export function QuickTaskForm({ companyId }: { companyId?: string }) {
         </button>
       </div>
 
-      {state?.error && <p className="text-sm text-rose-700">{state.error}</p>}
+      {state?.error && <p className="text-sm text-danger">{state.error}</p>}
     </form>
   );
 }

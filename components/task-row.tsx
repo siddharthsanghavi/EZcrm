@@ -44,7 +44,7 @@ export function TaskRow({ task, today, showDelete = false }: Props) {
       </div>
 
       {task.due_date && (
-        <span className={`shrink-0 text-xs ${overdue ? 'font-medium text-rose-700' : 'text-black/40'}`}>
+        <span className={`shrink-0 text-xs ${overdue ? 'font-medium text-danger' : 'text-black/40'}`}>
           {new Date(task.due_date + 'T00:00:00').toLocaleDateString(undefined, {
             month: 'short',
             day: 'numeric',
@@ -55,7 +55,7 @@ export function TaskRow({ task, today, showDelete = false }: Props) {
       {showDelete && (
         <form action={deleteTask}>
           <input type="hidden" name="id" value={task.id} />
-          <button className="text-xs text-black/30 hover:text-rose-700">Delete</button>
+          <button className="text-xs text-black/30 hover:text-danger">Delete</button>
         </form>
       )}
     </li>

@@ -1,6 +1,9 @@
 import { currentProfile, serverClient } from '@/lib/supabase';
 import { removeMember, setMemberRole, updateMyName } from '@/app/actions';
+import { signInQuota } from '@/app/auth-quota';
 import { AddMemberForm } from '@/components/add-member-form';
+import { EmailQuotaTracker, type QuotaRequest } from '@/components/email-quota-tracker';
+import { LoginTracker, type LoginRow } from '@/components/login-tracker';
 import { displayName } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -9,9 +12,38 @@ export default async function MembersPage() {
   const me = await currentProfile();
   const supabase = await serverClient();
 
-  const [{ data: profiles }, { data: allowed }] = await Promise.all([
+  const dayAgo = new Date(Date.now() - 24 * 3600_000).toISOString();
+  const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString();
+
+  // The two logs are admin-read-only at the RLS level, so for a member they
+  // simply come back empty rather than erroring — no need to branch here.
+  const [
+    { data: profiles },
+    { data: allowed },
+    { data: emailRequests },
+    { data: logins },
+    { count: linksThisWeek },
+    quota,
+  ] = await Promise.all([
     supabase.from('profiles').select('id, email, full_name, role').order('email'),
     supabase.from('allowed_emails').select('email, note, added_at').order('added_at'),
+    supabase
+      .from('auth_email_requests')
+      .select('email, outcome, requested_at')
+      .gt('requested_at', dayAgo)
+      .order('requested_at', { ascending: false }),
+    supabase
+      .from('login_events')
+      .select('email, event, method, reason, created_at, profiles(full_name, email)')
+      .gt('created_at', weekAgo)
+      .order('created_at', { ascending: false }),
+    // Links actually sent over the same week, for the shortfall figure.
+    supabase
+      .from('auth_email_requests')
+      .select('id', { count: 'exact', head: true })
+      .eq('outcome', 'sent')
+      .gt('requested_at', weekAgo),
+    signInQuota(),
   ]);
 
   const isAdmin = me?.role === 'admin';
@@ -66,7 +98,7 @@ export default async function MembersPage() {
 
               <span
                 className={`chip ${
-                  p.role === 'admin' ? 'bg-violet-100 text-violet-800' : 'bg-black/[0.05] text-black/55'
+                  p.role === 'admin' ? 'bg-violet-100 text-violet-800 dark:bg-violet-400/15 dark:text-violet-300' : 'bg-black/[0.05] text-black/55'
                 }`}
               >
                 {p.role}
@@ -93,7 +125,7 @@ export default async function MembersPage() {
                   {p.id !== me?.id && (
                     <form action={removeMember}>
                       <input type="hidden" name="email" value={p.email} />
-                      <button className="text-xs text-black/30 hover:text-rose-700">Remove</button>
+                      <button className="text-xs text-black/30 hover:text-danger">Remove</button>
                     </form>
                   )}
                 </>
@@ -102,6 +134,19 @@ export default async function MembersPage() {
           ))}
         </ul>
       </section>
+
+      {isAdmin && (
+        <>
+          <LoginTracker
+            rows={(logins ?? []) as unknown as LoginRow[]}
+            linksRequested={linksThisWeek ?? 0}
+          />
+          <EmailQuotaTracker
+            requests={(emailRequests ?? []) as QuotaRequest[]}
+            quota={quota?.quota ?? 2}
+          />
+        </>
+      )}
 
       {pending.length > 0 && (
         <section className="card overflow-hidden">
@@ -118,7 +163,7 @@ export default async function MembersPage() {
                 {isAdmin && (
                   <form action={removeMember}>
                     <input type="hidden" name="email" value={a.email} />
-                    <button className="text-xs text-black/30 hover:text-rose-700">Remove</button>
+                    <button className="text-xs text-black/30 hover:text-danger">Remove</button>
                   </form>
                 )}
               </li>

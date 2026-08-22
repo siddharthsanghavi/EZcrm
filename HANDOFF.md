@@ -7,6 +7,9 @@ things you'd otherwise have to rediscover the hard way.
 > Deployment-specific details — URLs, project refs, who's on the team — belong in
 > `DEPLOYMENT.local.md`, which is gitignored. Keep them out of this repo so it
 > stays shareable.
+>
+> Agreed but unbuilt work is in [ROADMAP.md](ROADMAP.md), with the reasoning
+> behind each one written down while it was still fresh.
 
 ---
 
@@ -23,8 +26,9 @@ Next.js (App Router) + Supabase + Vercel. No paid services.
 ## Shape of the thing
 
 **Tables** — `companies`, `contacts`, `activities`, `tasks`, `status_events`,
-plus `profiles` and `allowed_emails` for access, and `geocache` for map
-coordinates.
+`saved_views`, plus `profiles` and `allowed_emails` for access, `geocache` for
+map coordinates, and `auth_email_requests` / `login_events` for sign-in
+tracking (both admin-read-only, both revoked from `anon`).
 
 **Pages** — Dashboard, Companies (filters, search, pagination, bulk assign and
 bulk status), Company detail (status, owner, activity timeline, contacts, tasks,
@@ -36,6 +40,61 @@ Members, Guide.
 - `status_events` records every status change with who and when, via an
   `AFTER UPDATE` trigger — so bulk updates and raw SQL are captured too, not
   just the UI.
+
+- `companies.last_touch_at` and `contacts.last_touch_at` are maintained the same
+  way, by an `AFTER INSERT` trigger on `activities`. Use these — **not
+  `updated_at`** — to judge whether anyone has actually been in contact;
+  `updated_at` moves when someone fixes a typo. The trigger refuses to move a
+  touch backwards, so back-dating an old call can't make a company look colder.
+
+- **Dark mode redefines what `black` and `white` mean**, rather than adding 190
+  `dark:` variants. `tailwind.config.ts` maps `black` to a `--fg` variable and
+  `white` to `--surface`, so every existing `text-black/45` and `bg-white`
+  inverts on its own. The consequence: **`text-white` is not a literal white.**
+  On `.btn-primary` that is the point — it yields a light button with dark text
+  in dark mode. If you ever need a real white, write `text-[#fff]`.
+
+  Things that can't follow the tokens and so are handled by hand: the status and
+  tier chips (`dark:` variants in `lib/types.ts`), the pipeline SVG (CSS
+  variables, since `dark:` can't touch an SVG `fill`), and Leaflet's own chrome.
+  The map has no dark tiles — the tile pane is CSS-inverted, which is why the
+  filter is scoped to `.leaflet-tile-pane` and not the whole map.
+
+- **Sign-in emails are capped project-wide, not per user.** Supabase's docs are
+  explicit: the limit is a "sum of combined requests project-wide" and is
+  customisable "Custom SMTP Only". So two members signing in can lock out a
+  third. `app/auth-quota.ts` + migration `009` track and enforce it, and the
+  limit lives in `claim_auth_email()` in the database — **not** an env var, so a
+  caller can't pass a bigger number. If you set up custom SMTP, raise it in that
+  function to match the dashboard.
+
+  `app/auth-quota.ts` holds the app's **only unauthenticated server actions**.
+  That is why `auth_email_requests` is revoked from `anon` outright and the
+  functions return counts but never addresses — otherwise the login page becomes
+  a way to enumerate club members. A claim also only counts for 60 seconds
+  unless confirmed, so hammering the endpoint can't fake an hour-long lockout.
+
+  **The `signInWithOtp` call itself was deliberately left in the browser.** The
+  limit check happens before it. Moving it server-side would change where the
+  PKCE verifier is stored, and auth is the one part of this app you cannot break
+  quietly.
+
+- **Sign-ins are logged by the app, not by Supabase.** `auth.audit_log_entries`
+  exists but is pruned — it was empty on the live project when this was written —
+  and `auth.users` / `auth.sessions` aren't readable by `authenticated`, since
+  there's no service-role key here by design. So `login_events` (migration `010`)
+  records it, written from **all three** sign-in paths: `/auth/callback` (PKCE),
+  `/auth/confirm` (token hash), and the implicit flow that finishes in the
+  browser via `app/auth-events.ts`. **Add a fourth path and you must log it too,
+  or the numbers quietly under-report.**
+
+  `recordLogin` swallows every error on purpose. A tracker that can lock the club
+  out of its own CRM is worse than no tracker — and `record_login_event` returns
+  rather than raising on a bad event name for the same reason.
+
+- `app/actions.ts` is `'use server'`: **every export must be an async action.**
+  Exporting a plain helper from it is a build error. Shared non-action helpers
+  go in `lib/` — that's why `lib/views.ts` exists.
 - `companies.area` is a computed region, assigned by nearest anchor from the
   coordinates. The anchor list in `ez_area()` is **specific to one US state** —
   replace it for your own geography.

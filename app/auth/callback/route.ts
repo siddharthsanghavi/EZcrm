@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { serverClient } from '@/lib/supabase';
+import { recordLogin, recordSignIn } from '@/lib/login-log';
 
 /** Send the user back to /login with something they can act on. */
 function fail(origin: string, reason: string) {
@@ -15,13 +16,17 @@ export async function GET(request: NextRequest) {
   // allowlist) as query params rather than an HTTP error. Surface them instead
   // of treating this like a missing code.
   const supabaseError = searchParams.get('error_description') ?? searchParams.get('error');
-  if (supabaseError) return fail(origin, supabaseError);
+  if (supabaseError) {
+    await recordLogin('failed', 'pkce', { reason: supabaseError });
+    return fail(origin, supabaseError);
+  }
 
   const code = searchParams.get('code');
   if (!code) {
     // The token was delivered in the URL fragment (implicit flow) rather than as
     // a code. A fragment never reaches the server, so this has to be finished in
     // the browser — /login reads it and completes sign-in there.
+    await recordLogin('failed', 'implicit', { reason: 'token arrived in URL fragment' });
     return fail(origin, 'no-code');
   }
 
@@ -31,8 +36,11 @@ export async function GET(request: NextRequest) {
   if (error) {
     // Most often the PKCE verifier cookie is absent because the link was opened
     // in a different browser or device than the one that requested it.
+    await recordLogin('failed', 'pkce', { reason: error.message });
     return fail(origin, error.message);
   }
+
+  await recordSignIn('pkce');
 
   // Only redirect within this app, so a crafted link can't bounce a
   // freshly authenticated user to someone else's site.

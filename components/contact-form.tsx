@@ -46,7 +46,7 @@ export function ContactForm({ companyId, companies, compact = false }: Props) {
 
       {!compact && <textarea name="notes" rows={3} placeholder="Notes" className="field" />}
 
-      {state?.error && <p className="text-sm text-rose-700">{state.error}</p>}
+      {state?.error && <p className="text-sm text-danger">{state.error}</p>}
 
       <button className="btn-ghost w-full" disabled={pending}>
         {pending ? 'Adding…' : 'Add contact'}

@@ -7,13 +7,18 @@ export type Flow = { from: Status | null; to: Status; count: number };
 const MAIN: Status[] = ['prospect', 'contacted', 'in_conversation', 'committed'];
 const EXITS: Status[] = ['declined', 'dormant'];
 
+// Referenced as CSS variables rather than literals: an inline SVG can't take
+// Tailwind's `dark:` variants on `fill`, so the two palettes live in
+// globals.css and the browser picks whichever the theme has defined.
+const v = (name: string) => `var(--st-${name})`;
+
 const FILL: Record<Status, { box: string; text: string; edge: string }> = {
-  prospect:        { box: '#f1f5f9', text: '#334155', edge: '#cbd5e1' },
-  contacted:       { box: '#dbeafe', text: '#1e40af', edge: '#93c5fd' },
-  in_conversation: { box: '#fef3c7', text: '#92400e', edge: '#fcd34d' },
-  committed:       { box: '#d1fae5', text: '#065f46', edge: '#6ee7b7' },
-  declined:        { box: '#ffe4e6', text: '#9f1239', edge: '#fda4af' },
-  dormant:         { box: '#f1f5f9', text: '#64748b', edge: '#cbd5e1' },
+  prospect:        { box: v('neutral-box'), text: v('neutral-text'), edge: v('neutral-edge') },
+  contacted:       { box: v('blue-box'),    text: v('blue-text'),    edge: v('blue-edge')    },
+  in_conversation: { box: v('amber-box'),   text: v('amber-text'),   edge: v('amber-edge')   },
+  committed:       { box: v('green-box'),   text: v('green-text'),   edge: v('green-edge')   },
+  declined:        { box: v('rose-box'),    text: v('rose-text'),    edge: v('rose-edge')    },
+  dormant:         { box: v('neutral-box'), text: v('dormant-text'), edge: v('neutral-edge') },
 };
 
 // Geometry. Laid out by hand rather than with a graph library: four stages in a
@@ -54,11 +59,11 @@ export function PipelineChart({
         <defs>
           <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
                   markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8" />
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--st-arrow)" />
           </marker>
           <marker id="arrow-exit" viewBox="0 0 10 10" refX="9" refY="5"
                   markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="#cbd5e1" />
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--st-arrow-soft)" />
           </marker>
         </defs>
 
@@ -72,10 +77,10 @@ export function PipelineChart({
           return (
             <g key={`edge-${s}`}>
               <line x1={x1 + 4} y1={y} x2={x2 - 6} y2={y}
-                    stroke="#94a3b8" strokeWidth="1.5" markerEnd="url(#arrow)" />
+                    stroke="var(--st-arrow)" strokeWidth="1.5" markerEnd="url(#arrow)" />
               {moved > 0 && (
                 <text x={(x1 + x2) / 2} y={y - 9} textAnchor="middle"
-                      fontSize="11" fill="#64748b" fontWeight="600">
+                      fontSize="11" fill="var(--st-flow-label)" fontWeight="600">
                   {moved}
                 </text>
               )}
@@ -89,7 +94,7 @@ export function PipelineChart({
           return (
             <line key={`exit-edge-${s}`}
                   x1={cx} y1={TOP_Y + BOX_H} x2={cx} y2={EXIT_Y - 6}
-                  stroke="#cbd5e1" strokeWidth="1.5" strokeDasharray="4 3"
+                  stroke="var(--st-arrow-soft)" strokeWidth="1.5" strokeDasharray="4 3"
                   markerEnd="url(#arrow-exit)" />
           );
         })}

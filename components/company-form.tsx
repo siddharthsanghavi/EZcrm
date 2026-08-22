@@ -169,8 +169,8 @@ export function CompanyForm({ company }: { company?: Company }) {
         </div>
       </div>
 
-      {state?.error && <p className="text-sm text-rose-700">{state.error}</p>}
-      {state?.ok && <p className="text-sm text-emerald-700">Saved.</p>}
+      {state?.error && <p className="text-sm text-danger">{state.error}</p>}
+      {state?.ok && <p className="text-sm text-success">Saved.</p>}
 
       <div className="flex justify-end">
         <button className="btn-primary" disabled={pending}>

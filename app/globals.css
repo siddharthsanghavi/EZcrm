@@ -2,6 +2,64 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Channel triplets, not hex, so Tailwind's `/opacity` modifier still works —
+   `text-black/45` compiles to rgb(var(--fg) / 0.45). See tailwind.config.ts for
+   why black and white are the things being redefined. */
+:root {
+  --fg: 0 0 0;
+  --surface: 255 255 255;
+  --ink: 18 21 26;
+  --paper: 251 250 248;
+
+  --danger: 190 18 60;
+  --success: 4 120 87;
+  --warn: 180 83 9;
+
+  /* Pipeline chart. An inline SVG can't use Tailwind's `dark:` variants on
+     `fill`, so its palette lives here as variables the SVG references. */
+  --st-neutral-box: #f1f5f9;  --st-neutral-text: #334155;  --st-neutral-edge: #cbd5e1;
+  --st-blue-box:    #dbeafe;  --st-blue-text:    #1e40af;  --st-blue-edge:    #93c5fd;
+  --st-amber-box:   #fef3c7;  --st-amber-text:   #92400e;  --st-amber-edge:   #fcd34d;
+  --st-green-box:   #d1fae5;  --st-green-text:   #065f46;  --st-green-edge:   #6ee7b7;
+  --st-rose-box:    #ffe4e6;  --st-rose-text:    #9f1239;  --st-rose-edge:    #fda4af;
+  --st-dormant-text: #64748b;
+  --st-arrow: #94a3b8;
+  --st-arrow-soft: #cbd5e1;
+  --st-flow-label: #64748b;
+
+  color-scheme: light;
+}
+
+.dark {
+  --fg: 255 255 255;
+  /* Cards sit slightly above the page rather than below it, the same way the
+     light theme puts white cards on off-white paper. */
+  --surface: 24 27 32;
+  --ink: 237 240 245;
+  --paper: 15 17 21;
+
+  /* Lightened: rose-700 on a near-black card fails contrast badly. */
+  --danger: 253 164 175;
+  --success: 110 231 183;
+  --warn: 252 211 77;
+
+  /* Pipeline chart: same hues, inverted weighting — a dim translucent fill
+     with a light label, instead of a pale fill with a dark one. */
+  --st-neutral-box: #1e242c;  --st-neutral-text: #cbd5e1;  --st-neutral-edge: #3a4453;
+  --st-blue-box:    #16263f;  --st-blue-text:    #93c5fd;  --st-blue-edge:    #2f4d78;
+  --st-amber-box:   #33260d;  --st-amber-text:   #fcd34d;  --st-amber-edge:   #6b5115;
+  --st-green-box:   #0d2b21;  --st-green-text:   #6ee7b7;  --st-green-edge:   #1c5644;
+  --st-rose-box:    #351520;  --st-rose-text:    #fda4af;  --st-rose-edge:    #6b2b3a;
+  --st-dormant-text: #8b98a9;
+  --st-arrow: #64748b;
+  --st-arrow-soft: #48525f;
+  --st-flow-label: #94a3b8;
+
+  /* Makes native date pickers, selects, and scrollbars follow the theme.
+     This app is full of them, so without it dark mode looks half-finished. */
+  color-scheme: dark;
+}
+
 @layer base {
   body {
     @apply bg-paper text-ink antialiased;
@@ -35,13 +93,34 @@
 }
 
 /* Leaflet renders popups and cluster icons as raw HTML, so these are plain CSS
-   rather than Tailwind classes. */
+   rather than Tailwind classes — which also means they need the theme tokens
+   spelled out by hand. */
 .leaflet-popup-content .pop { font-size: 13px; line-height: 1.45; }
 .leaflet-popup-content .pop .title {
-  font-weight: 600; font-size: 14px; color: #12151a; text-decoration: none;
+  font-weight: 600; font-size: 14px; color: rgb(var(--ink)); text-decoration: none;
 }
 .leaflet-popup-content .pop .title:hover { text-decoration: underline; }
-.leaflet-popup-content .pop .sub { color: rgba(0,0,0,0.5); font-size: 11px; margin-top: 3px; }
+.leaflet-popup-content .pop .sub { color: rgb(var(--fg) / 0.5); font-size: 11px; margin-top: 3px; }
+
+/* Leaflet's own chrome is hardcoded white. */
+.dark .leaflet-popup-content-wrapper,
+.dark .leaflet-popup-tip,
+.dark .leaflet-control-zoom a,
+.dark .leaflet-control-attribution {
+  background: rgb(var(--surface));
+  color: rgb(var(--ink));
+}
+.dark .leaflet-control-zoom a { border-color: rgb(var(--fg) / 0.15); }
+.dark .leaflet-control-zoom a:hover { background: rgb(var(--fg) / 0.08); }
+.dark .leaflet-control-attribution a { color: rgb(var(--ink) / 0.7); }
+
+/* OpenStreetMap has no free dark raster tiles, and adding a provider would mean
+   an API key and a bill. Inverting the tile pane only — not the whole map —
+   gives a dark basemap while pins, clusters, and popups keep their real
+   colours. hue-rotate puts water and greens back the right way round. */
+.dark .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.9) saturate(0.8);
+}
 .leaflet-popup-content .pop .badges { margin-top: 7px; display: flex; flex-wrap: wrap; gap: 4px; }
 .leaflet-popup-content .pop .b {
   border-radius: 999px; padding: 1px 8px; font-size: 10px; font-weight: 600;

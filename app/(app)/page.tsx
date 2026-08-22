@@ -1,6 +1,15 @@
 import Link from 'next/link';
 import { serverClient } from '@/lib/supabase';
-import { STATUS_LABELS, STATUS_STYLES, STATUSES, type Status } from '@/lib/types';
+import {
+  COLD_AFTER_DAYS,
+  STATUS_LABELS,
+  STATUS_STYLES,
+  STATUSES,
+  displayName,
+  isCold,
+  sinceLabel,
+  type Status,
+} from '@/lib/types';
 import { TaskRow } from '@/components/task-row';
 
 export const dynamic = 'force-dynamic';
@@ -10,9 +19,10 @@ export default async function Dashboard() {
   const today = new Date().toISOString().slice(0, 10);
 
   const [{ data: companies }, { data: tasks }, { data: activities }] = await Promise.all([
-    supabase.from('companies').select('id, name, status, updated_at').order('updated_at', {
-      ascending: false,
-    }),
+    supabase
+      .from('companies')
+      .select('id, name, status, last_touch_at, profiles!companies_owner_id_fkey(full_name, email)')
+      .order('last_touch_at', { ascending: true, nullsFirst: true }),
     supabase
       .from('tasks')
       .select('id, title, due_date, done, company_id, companies(name)')
@@ -33,12 +43,11 @@ export default async function Dashboard() {
 
   const overdue = (tasks ?? []).filter((t) => t.due_date && t.due_date < today).length;
 
-  // Anything sitting in an active stage without a touch in three weeks is the
-  // thing most likely to quietly die, so surface it above everything else.
-  const threeWeeksAgo = new Date(Date.now() - 21 * 864e5).toISOString();
-  const stale = all
-    .filter((c) => ['contacted', 'in_conversation'].includes(c.status) && c.updated_at < threeWeeksAgo)
-    .slice(0, 5);
+  // Anything sitting in an active stage without a logged touch in three weeks
+  // is the thing most likely to quietly die, so surface it above everything
+  // else. Already ordered oldest-touch-first by the query, so the top of this
+  // list is the worst of it.
+  const cold = all.filter((c) => isCold(c.status as Status, c.last_touch_at));
 
   return (
     <div className="space-y-8">
@@ -63,25 +72,45 @@ export default async function Dashboard() {
         ))}
       </div>
 
-      {stale.length > 0 && (
+      {cold.length > 0 && (
         <section className="card overflow-hidden">
-          <h2 className="border-b border-black/10 px-5 py-3 text-sm font-semibold">
-            Going cold · no activity in 3 weeks
-          </h2>
+          <div className="flex items-center justify-between border-b border-black/10 px-5 py-3">
+            <h2 className="text-sm font-semibold">
+              Going cold · {cold.length} untouched in {COLD_AFTER_DAYS}+ days
+            </h2>
+            {cold.length > 5 && (
+              <Link href="/companies?cold=1" className="text-xs text-black/45 hover:text-ink">
+                See all →
+              </Link>
+            )}
+          </div>
           <ul className="divide-y divide-black/5">
-            {stale.map((c) => (
-              <li key={c.id}>
-                <Link
-                  href={`/companies/${c.id}`}
-                  className="flex items-center justify-between px-5 py-3 text-sm hover:bg-black/[0.02]"
-                >
-                  <span className="font-medium">{c.name}</span>
-                  <span className={`chip ${STATUS_STYLES[c.status as Status]}`}>
-                    {STATUS_LABELS[c.status as Status]}
-                  </span>
-                </Link>
-              </li>
-            ))}
+            {cold.slice(0, 5).map((c) => {
+              const owner = c.profiles as unknown as
+                | { full_name: string | null; email: string }
+                | null;
+              return (
+                <li key={c.id}>
+                  <Link
+                    href={`/companies/${c.id}`}
+                    className="flex items-center gap-3 px-5 py-3 text-sm hover:bg-black/[0.02]"
+                  >
+                    <span className="min-w-0 flex-1 truncate font-medium">{c.name}</span>
+                    {owner && (
+                      <span className="hidden shrink-0 text-xs text-black/45 sm:block">
+                        {displayName(owner)}
+                      </span>
+                    )}
+                    <span className="shrink-0 text-xs font-medium text-warn">
+                      {sinceLabel(c.last_touch_at)}
+                    </span>
+                    <span className={`chip shrink-0 ${STATUS_STYLES[c.status as Status]}`}>
+                      {STATUS_LABELS[c.status as Status]}
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         </section>
       )}

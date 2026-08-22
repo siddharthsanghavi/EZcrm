@@ -26,13 +26,19 @@ export const STATUS_LABELS: Record<Status, string> = {
   dormant: 'Dormant',
 };
 
+/**
+ * Chips are the one place a literal hue survives the theme swap — a status has
+ * to stay recognisably the same colour in both themes. The light values are
+ * pale-fill/dark-text; dark mode inverts that to a translucent fill with light
+ * text, because a `-100` fill is glaring against a near-black card.
+ */
 export const STATUS_STYLES: Record<Status, string> = {
-  prospect: 'bg-slate-100 text-slate-700',
-  contacted: 'bg-blue-100 text-blue-800',
-  in_conversation: 'bg-amber-100 text-amber-800',
-  committed: 'bg-emerald-100 text-emerald-800',
-  declined: 'bg-rose-100 text-rose-800',
-  dormant: 'bg-slate-100 text-slate-500',
+  prospect: 'bg-slate-100 text-slate-700 dark:bg-slate-400/15 dark:text-slate-300',
+  contacted: 'bg-blue-100 text-blue-800 dark:bg-blue-400/15 dark:text-blue-300',
+  in_conversation: 'bg-amber-100 text-amber-800 dark:bg-amber-400/15 dark:text-amber-300',
+  committed: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-300',
+  declined: 'bg-rose-100 text-rose-800 dark:bg-rose-400/15 dark:text-rose-300',
+  dormant: 'bg-slate-100 text-slate-500 dark:bg-slate-400/10 dark:text-slate-400',
 };
 
 export const INTERESTS = ['tour', 'sponsorship'] as const;
@@ -46,8 +52,9 @@ export const TIERS = ['Tier 1', 'Tier 2', 'Tier 3', 'Reference'] as const;
 export type Tier = (typeof TIERS)[number];
 
 export const TIER_STYLES: Record<string, string> = {
-  'Tier 1': 'bg-violet-100 text-violet-800',
-  'Tier 2': 'bg-sky-100 text-sky-800',
+  'Tier 1': 'bg-violet-100 text-violet-800 dark:bg-violet-400/15 dark:text-violet-300',
+  'Tier 2': 'bg-sky-100 text-sky-800 dark:bg-sky-400/15 dark:text-sky-300',
+  // These two are already expressed in ink, so they invert on their own.
   'Tier 3': 'bg-black/[0.06] text-black/55',
   Reference: 'bg-black/[0.04] text-black/40',
 };
@@ -68,6 +75,8 @@ export type Company = {
   phone: string | null;
   employees: number | null;
   owner_id: string | null;
+  /** Last logged activity, maintained by trigger. Null means never touched. */
+  last_touch_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -81,6 +90,7 @@ export type Contact = {
   phone: string | null;
   title: string | null;
   notes: string | null;
+  last_touch_at: string | null;
   created_at: string;
 };
 
@@ -118,6 +128,43 @@ export type StatusEvent = {
 /** Which stages flow into which, for the pipeline diagram. */
 export const PIPELINE: Status[] = ['prospect', 'contacted', 'in_conversation', 'committed'];
 export const PIPELINE_EXITS: Status[] = ['declined', 'dormant'];
+
+/**
+ * Stages where silence is a problem. A prospect nobody has called yet isn't
+ * going cold — it hasn't started. Committed and declined are settled, and
+ * dormant is already the label for "we stopped".
+ */
+export const ACTIVE_STAGES: Status[] = ['contacted', 'in_conversation'];
+
+/** How long a company sits untouched before it counts as cold. */
+export const COLD_AFTER_DAYS = 21;
+
+/** Whole days since a touch. Null (never touched) sorts as the coldest. */
+export function daysSince(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 864e5);
+}
+
+/**
+ * Cold means: still in play, and nobody has logged anything in three weeks.
+ * The database filter in the companies page has to express this in PostgREST
+ * terms, so if you change the rule, change it in both places.
+ */
+export function isCold(status: Status, lastTouchAt: string | null): boolean {
+  if (!ACTIVE_STAGES.includes(status)) return false;
+  const days = daysSince(lastTouchAt);
+  return days === null || days >= COLD_AFTER_DAYS;
+}
+
+/** "12 days ago" / "never" — for a column that has to stay narrow. */
+export function sinceLabel(iso: string | null | undefined): string {
+  const days = daysSince(iso);
+  if (days === null) return 'never';
+  if (days <= 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 60) return `${days}d ago`;
+  return `${Math.floor(days / 30)}mo ago`;
+}
 
 /** Short label for whoever a record is assigned to. */
 export function displayName(p: { full_name: string | null; email: string } | null | undefined) {

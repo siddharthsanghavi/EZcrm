@@ -3,6 +3,16 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { browserClient } from '@/lib/supabase-browser';
+import { claimSignInEmail, settleSignInEmail, signInQuota, type Quota } from '@/app/auth-quota';
+import { logImplicitFailure, logImplicitSignIn } from '@/app/auth-events';
+
+/** "in 23 minutes" / "shortly" — a wait a person can act on. */
+function waitLabel(retryAfter: string | null): string {
+  if (!retryAfter) return 'shortly';
+  const mins = Math.ceil((new Date(retryAfter).getTime() - Date.now()) / 60000);
+  if (mins <= 1) return 'in about a minute';
+  return `in ${mins} minute${mins === 1 ? '' : 's'}`;
+}
 
 function LoginForm() {
   const router = useRouter();
@@ -11,6 +21,7 @@ function LoginForm() {
   const [email, setEmail] = useState('');
   const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [message, setMessage] = useState('');
+  const [quota, setQuota] = useState<Quota | null>(null);
 
   // Show whatever the callback couldn't finish — in words a club member can act
   // on. Supabase's own messages are written for developers ("PKCE code verifier
@@ -51,22 +62,53 @@ function LoginForm() {
     setState('sending');
     browserClient()
       .auth.setSession({ access_token, refresh_token })
-      .then(({ error }) => {
+      .then(async ({ error }) => {
         if (error) {
           setState('error');
           setMessage(error.message);
+          await logImplicitFailure(error.message);
           return;
         }
+        // Awaited before navigating: the cookie is set by now, so the server
+        // action can resolve who signed in, and leaving the page mid-call
+        // would lose the row.
+        await logImplicitSignIn();
         history.replaceState(null, '', window.location.pathname);
         router.replace(params.get('next') ?? '/');
         router.refresh();
       });
   }, [router, params]);
 
+  // Show what's left of the club's hourly allowance before anyone spends one.
+  useEffect(() => {
+    signInQuota().then(setQuota);
+  }, []);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setState('sending');
     setMessage('');
+
+    // Ask for one of the hour's emails first. If the club is out, stop here —
+    // sending the request anyway would spend the quota at Supabase and come
+    // back as a 429 we could not explain.
+    const claim = await claimSignInEmail(email);
+
+    if (claim) {
+      setQuota({ used: claim.used, quota: claim.quota, retryAfter: claim.retryAfter });
+
+      if (!claim.allowed) {
+        setState('error');
+        setMessage(
+          `The club has used all ${claim.quota} sign-in emails for this hour — they're shared ` +
+            `between everyone, not per person. Try again ${waitLabel(claim.retryAfter)}. ` +
+            `If you already have a link in your inbox, it is still good for an hour.`,
+        );
+        return;
+      }
+    }
+    // A null claim means the quota service itself is unreachable. Fall through
+    // and let Supabase decide rather than blocking sign-in on our own tracker.
 
     const next = params.get('next');
     const redirect = new URL('/auth/callback', window.location.origin);
@@ -77,9 +119,14 @@ function LoginForm() {
       options: { emailRedirectTo: redirect.toString() },
     });
 
+    // Release the claim if nothing was actually sent, so a typo doesn't cost
+    // the club one of its two.
+    if (claim?.claimId) await settleSignInEmail(claim.claimId, !error);
+
     if (error) {
       setState('error');
       setMessage(error.message);
+      setQuota(await signInQuota());
     } else {
       setState('sent');
     }
@@ -92,7 +139,7 @@ function LoginForm() {
 
       {state === 'sent' ? (
         <div className="mt-6 space-y-3">
-          <p className="rounded-md bg-emerald-50 p-3 text-sm text-emerald-900">
+          <p className="rounded-md bg-success/10 p-3 text-sm text-success">
             Check <strong>{email}</strong> for a sign-in link. It expires in an hour.
           </p>
           <p className="text-xs text-black/45">
@@ -123,7 +170,32 @@ function LoginForm() {
           </button>
 
           {state === 'error' && (
-            <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-800">{message}</p>
+            <p className="rounded-md bg-danger/10 p-3 text-sm text-danger">{message}</p>
+          )}
+
+          {/* Only worth saying once some of the allowance is gone — on a quiet
+              hour this is noise, and "2 of 2 remaining" invites people to spend
+              them. */}
+          {quota && quota.used > 0 && state !== 'error' && (
+            <p className="flex items-center gap-2 text-xs text-black/45">
+              <span
+                aria-hidden
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                  quota.used >= quota.quota ? 'bg-danger' : 'bg-warn'
+                }`}
+              />
+              {quota.used >= quota.quota ? (
+                <>
+                  The club&apos;s {quota.quota} sign-in emails for this hour are used. Next one free{' '}
+                  {waitLabel(quota.retryAfter)}.
+                </>
+              ) : (
+                <>
+                  {quota.used} of {quota.quota} sign-in emails used this hour, shared by the whole
+                  club.
+                </>
+              )}
+            </p>
           )}
 
           <p className="pt-2 text-xs text-black/45">

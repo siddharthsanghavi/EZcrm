@@ -1,14 +1,20 @@
 import Link from 'next/link';
 import { bulkApply } from '@/app/actions';
 import { BulkBar, SelectAll } from '@/components/bulk-bar';
-import { serverClient } from '@/lib/supabase';
+import { SavedViews } from '@/components/saved-views';
+import { currentProfile, serverClient } from '@/lib/supabase';
+import { normalizeViewQuery, type SavedView } from '@/lib/views';
 import {
+  ACTIVE_STAGES,
+  COLD_AFTER_DAYS,
   STATUS_LABELS,
   STATUS_STYLES,
   STATUSES,
   TIER_STYLES,
   TIERS,
   displayName,
+  isCold,
+  sinceLabel,
   type Status,
 } from '@/lib/types';
 
@@ -22,6 +28,7 @@ type Search = {
   type?: string;
   region?: string;
   owner?: string;
+  cold?: string;
   q?: string;
   page?: string;
 };
@@ -43,7 +50,7 @@ export default async function CompaniesPage({
   searchParams: Promise<Search>;
 }) {
   const sp = await searchParams;
-  const { status, tier, type, region, owner, q } = sp;
+  const { status, tier, type, region, owner, cold, q } = sp;
   const page = Math.max(1, Number.parseInt(sp.page ?? '1', 10) || 1);
 
   const supabase = await serverClient();
@@ -51,14 +58,24 @@ export default async function CompaniesPage({
   let query = supabase
     .from('companies')
     .select(
-      'id, name, website, industry, status, interest, type, tier, city, region, owner_id, contacts(count), profiles!companies_owner_id_fkey(full_name, email)',
+      'id, name, website, industry, status, interest, type, tier, city, region, owner_id, last_touch_at, contacts(count), profiles!companies_owner_id_fkey(full_name, email)',
       { count: 'exact' },
     )
+    .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+
+  // The cold list is a worklist, not a directory: order it by how long it has
+  // been ignored, worst first, rather than by the directory's own ranking.
+  if (cold) {
+    const coldBefore = new Date(Date.now() - COLD_AFTER_DAYS * 864e5).toISOString();
+    query = query
+      .in('status', ACTIVE_STAGES)
+      .or(`last_touch_at.is.null,last_touch_at.lt.${coldBefore}`)
+      .order('last_touch_at', { ascending: true, nullsFirst: true });
+  } else {
     // Tier 1 first, then Tier 2, and so on — the directory's own ranking is the
     // most useful default order for deciding who to call.
-    .order('tier_rank', { ascending: true })
-    .order('name', { ascending: true })
-    .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+    query = query.order('tier_rank', { ascending: true }).order('name', { ascending: true });
+  }
 
   if (status && STATUSES.includes(status as Status)) query = query.eq('status', status);
   if (tier) query = query.eq('tier', tier);
@@ -71,10 +88,21 @@ export default async function CompaniesPage({
 
   // Distinct values for the dropdowns. Cheap enough at this size, and it means
   // the filters always reflect whatever is actually in the database.
-  const [{ data: companies, count, error }, { data: facets }, { data: members }] = await Promise.all([
+  const [
+    { data: companies, count, error },
+    { data: facets },
+    { data: members },
+    { data: views },
+    me,
+  ] = await Promise.all([
     query,
     supabase.from('companies').select('type, region').limit(5000),
     supabase.from('profiles').select('id, full_name, email').order('email'),
+    supabase
+      .from('saved_views')
+      .select('id, name, path, query, shared, owner_id')
+      .order('created_at'),
+    currentProfile(),
   ]);
 
   const types = [...new Set((facets ?? []).map((f) => f.type).filter(Boolean))].sort();
@@ -82,6 +110,14 @@ export default async function CompaniesPage({
 
   const total = count ?? 0;
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  // Compared against each saved view's stored query, so both sides go through
+  // the same normalisation and the active chip actually lights up.
+  const currentQuery = normalizeViewQuery(
+    new URLSearchParams(
+      Object.entries(sp).filter((e): e is [string, string] => Boolean(e[1])),
+    ).toString(),
+  );
 
   return (
     <div className="space-y-5">
@@ -164,10 +200,26 @@ export default async function CompaniesPage({
               {STATUS_LABELS[s]}
             </Pill>
           ))}
+
+          <span className="ml-4 mr-1 text-xs font-medium text-black/40">Attention</span>
+          <Pill href={withFilter(sp, 'cold', cold ? undefined : '1')} active={!!cold}>
+            Going cold
+          </Pill>
         </div>
+
+        {me && (
+          <div className="border-t border-black/[0.07] pt-3">
+            <SavedViews
+              views={(views ?? []) as SavedView[]}
+              path="/companies"
+              currentQuery={currentQuery}
+              myId={me.id}
+            />
+          </div>
+        )}
       </div>
 
-      {error && <p className="text-sm text-rose-700">{error.message}</p>}
+      {error && <p className="text-sm text-danger">{error.message}</p>}
 
       <form id="bulk" action={bulkApply} className="space-y-3">
       <div className="card overflow-hidden">
@@ -213,6 +265,17 @@ export default async function CompaniesPage({
                         {contactCount} contact{contactCount === 1 ? '' : 's'}
                       </span>
                     )}
+
+                    <span
+                      title="Last logged activity"
+                      className={`hidden w-20 shrink-0 text-right text-xs sm:block ${
+                        isCold(c.status as Status, c.last_touch_at as string | null)
+                          ? 'font-medium text-warn'
+                          : 'text-black/35'
+                      }`}
+                    >
+                      {sinceLabel(c.last_touch_at as string | null)}
+                    </span>
 
                     {c.tier && (
                       <span className={`chip shrink-0 ${TIER_STYLES[c.tier] ?? ''}`}>{c.tier}</span>

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { currentProfile } from '@/lib/supabase';
+import { ThemeToggle } from '@/components/theme-toggle';
 
 const NAV = [
   { href: '/', label: 'Dashboard' },
@@ -41,6 +42,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </nav>
 
           <div className="flex items-center gap-3">
+            <ThemeToggle />
             <span className="hidden text-xs text-black/45 sm:block">{profile.email}</span>
             <form action="/auth/signout" method="post">
               <button className="text-xs text-black/45 hover:text-ink">Sign out</button>

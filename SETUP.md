@@ -134,6 +134,12 @@ Edit `.env.local`:
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://YOUR-PROJECT.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+
+# Optional. Any random string. Enables per-IP capping of sign-in link requests
+# on top of the club-wide hourly limit. Without it, IP addresses aren't recorded
+# at all — a plain hash of an IP is reversible by brute force, so storing one
+# unsalted would be storing the address in a thin disguise.
+AUTH_RATE_SALT=
 ```
 
 > ⚠️ **Never put the `service_role` key in this project.** It bypasses every RLS
@@ -179,6 +185,7 @@ Admin lets you delete records you didn't create and manage the allowlist.
    | --- | --- |
    | `NEXT_PUBLIC_SUPABASE_URL` | your project URL |
    | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | your anon key |
+   | `AUTH_RATE_SALT` | optional; any random string (see above) |
 
 4. **Deploy**, then copy your URL (`https://ezcrm-something.vercel.app`).
 

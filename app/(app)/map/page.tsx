@@ -90,7 +90,7 @@ export default async function MapPage({ searchParams }: { searchParams: Promise<
         <Pill href={link('owner', 'none')} active={owner === 'none'}>Unassigned</Pill>
       </div>
 
-      {error && <p className="text-sm text-rose-700">{error.message}</p>}
+      {error && <p className="text-sm text-danger">{error.message}</p>}
 
       {companies.length === 0 ? (
         <div className="card px-5 py-12 text-center text-sm text-black/50">

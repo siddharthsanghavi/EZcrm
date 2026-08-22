@@ -8,6 +8,8 @@ import {
   STATUSES,
   TIER_STYLES,
   displayName,
+  isCold,
+  sinceLabel,
   type Company,
   type Status,
 } from '@/lib/types';
@@ -69,13 +71,13 @@ export default async function CompanyPage({
         <h1 className="text-2xl font-semibold tracking-tight">Edit company</h1>
         <CompanyForm company={c} />
 
-        <form action={deleteCompany} className="card border-rose-200 p-5">
+        <form action={deleteCompany} className="card border-danger/30 p-5">
           <input type="hidden" name="id" value={id} />
-          <h2 className="text-sm font-semibold text-rose-900">Delete this company</h2>
+          <h2 className="text-sm font-semibold text-danger">Delete this company</h2>
           <p className="mt-1 text-sm text-black/55">
             Removes its contacts, activity, and tasks too. This can&apos;t be undone.
           </p>
-          <button className="btn mt-3 border border-rose-300 text-rose-800 hover:bg-rose-50">
+          <button className="btn mt-3 border border-danger/40 text-danger hover:bg-danger/10">
             Delete {c.name}
           </button>
         </form>
@@ -123,6 +125,14 @@ export default async function CompanyPage({
               <span className="text-black/45">Assigned to </span>
               <span className={c.owner_id ? 'font-medium' : 'text-black/40'}>
                 {displayName((members ?? []).find((m) => m.id === c.owner_id))}
+              </span>
+              <span className="text-black/45"> · last touched </span>
+              <span
+                className={
+                  isCold(c.status, c.last_touch_at) ? 'font-medium text-warn' : 'font-medium'
+                }
+              >
+                {sinceLabel(c.last_touch_at)}
               </span>
             </div>
           </div>

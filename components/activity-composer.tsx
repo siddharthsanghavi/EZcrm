@@ -57,7 +57,7 @@ export function ActivityComposer({
       <input name="subject" placeholder="Subject — e.g. Sent sponsorship deck" className="field" />
       <textarea name="body" rows={3} placeholder="What happened? What's next?" className="field" />
 
-      {state?.error && <p className="text-sm text-rose-700">{state.error}</p>}
+      {state?.error && <p className="text-sm text-danger">{state.error}</p>}
 
       <div className="flex justify-end">
         <button className="btn-primary" disabled={pending}>

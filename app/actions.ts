@@ -241,3 +241,127 @@ export async function deleteTask(formData: FormData) {
   await supabase.from('tasks').delete().eq('id', id);
   revalidatePath('/tasks');
 }
+
+// ------------------------------------------------------------ bulk operations
+
+/** Read the checked company ids from a bulk form. */
+const ids = (formData: FormData) =>
+  formData.getAll('ids').filter((v): v is string => typeof v === 'string' && v.length > 0);
+
+/**
+ * Assign many companies at once. Dividing 1,200 companies between five people
+ * one dropdown at a time is not a real workflow.
+ */
+export async function bulkApply(formData: FormData) {
+  return formData.get('op') === 'status' ? bulkStatus(formData) : bulkAssign(formData);
+}
+
+export async function bulkAssign(formData: FormData) {
+  const { supabase } = await requireMember();
+  const list = ids(formData);
+  if (list.length === 0) return;
+
+  const owner = text(formData.get('owner_id'));
+  await supabase.from('companies').update({ owner_id: owner }).in('id', list);
+
+  revalidatePath('/companies');
+  revalidatePath('/pipeline');
+  revalidatePath('/map');
+}
+
+export async function bulkStatus(formData: FormData) {
+  const { supabase } = await requireMember();
+  const list = ids(formData);
+  if (list.length === 0) return;
+
+  await supabase
+    .from('companies')
+    .update({ status: oneOf(formData.get('status'), STATUSES, 'prospect') })
+    .in('id', list);
+
+  revalidatePath('/companies');
+  revalidatePath('/pipeline');
+}
+
+// ------------------------------------------------------------ member admin
+
+/** Admin-only. RLS enforces this too; failing here just gives a clearer error. */
+async function requireAdmin() {
+  const profile = await currentProfile();
+  if (!profile) redirect('/no-access');
+  if (profile.role !== 'admin') return null;
+  return { profile, supabase: await serverClient() };
+}
+
+export async function addAllowedEmail(formData: FormData) {
+  const ctx = await requireAdmin();
+  if (!ctx) return { error: 'Only admins can add members.' };
+
+  const email = text(formData.get('email'))?.toLowerCase();
+  if (!email || !email.includes('@')) return { error: 'Enter a valid email address.' };
+
+  const { error } = await ctx.supabase
+    .from('allowed_emails')
+    .insert({ email, note: text(formData.get('note')) });
+
+  if (error) {
+    return {
+      error: error.code === '23505' ? 'That address is already on the list.' : error.message,
+    };
+  }
+
+  revalidatePath('/members');
+  return { ok: true };
+}
+
+/**
+ * Removing someone takes two deletes: the allowlist stops them signing up again,
+ * the profile is what actually grants access. Dropping only one leaves them in.
+ */
+export async function removeMember(formData: FormData) {
+  const ctx = await requireAdmin();
+  if (!ctx) return;
+
+  const email = text(formData.get('email'));
+  if (!email) return;
+
+  const me = await currentProfile();
+  if (me?.email.toLowerCase() === email.toLowerCase()) return; // don't lock yourself out
+
+  await ctx.supabase.from('profiles').delete().eq('email', email);
+  await ctx.supabase.from('allowed_emails').delete().eq('email', email);
+
+  revalidatePath('/members');
+}
+
+export async function setMemberRole(formData: FormData) {
+  const ctx = await requireAdmin();
+  if (!ctx) return;
+
+  const id = text(formData.get('id'));
+  if (!id) return;
+
+  // Goes through set_member_role rather than a direct update: `authenticated`
+  // only holds column privileges on full_name, so a plain update would be
+  // denied. That is deliberate — see migration 006. The function re-checks
+  // admin and refuses to remove the last admin.
+  await ctx.supabase.rpc('set_member_role', {
+    target: id,
+    new_role: formData.get('role') === 'admin' ? 'admin' : 'member',
+  });
+
+  revalidatePath('/members');
+}
+
+/** Anyone can set their own display name; it beats showing an email prefix. */
+export async function updateMyName(formData: FormData) {
+  const { profile, supabase } = await requireMember();
+  await supabase
+    .from('profiles')
+    .update({ full_name: text(formData.get('full_name')) })
+    .eq('id', profile.id);
+
+  revalidatePath('/members');
+  revalidatePath('/companies');
+  revalidatePath('/pipeline');
+}

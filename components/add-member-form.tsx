@@ -1,0 +1,42 @@
+'use client';
+
+import { useActionState, useRef } from 'react';
+import { addAllowedEmail } from '@/app/actions';
+
+type State = { error?: string; ok?: boolean } | null;
+
+/** Client form so "that address is already on the list" can actually be shown. */
+export function AddMemberForm() {
+  const formRef = useRef<HTMLFormElement>(null);
+
+  const [state, action, pending] = useActionState<State, FormData>(async (_prev, formData) => {
+    const result = (await addAllowedEmail(formData)) ?? null;
+    if (result?.ok) formRef.current?.reset();
+    return result;
+  }, null);
+
+  return (
+    <form ref={formRef} action={action} className="mt-3 space-y-2">
+      <div className="flex flex-wrap gap-2">
+        <input
+          name="email"
+          type="email"
+          required
+          placeholder="name@club.org"
+          className="field max-w-xs"
+        />
+        <input name="note" placeholder="Role (optional)" className="field max-w-[10rem]" />
+        <button className="btn-primary" disabled={pending}>
+          {pending ? 'Adding…' : 'Add'}
+        </button>
+      </div>
+
+      {state?.error && <p className="text-sm text-rose-700">{state.error}</p>}
+      {state?.ok && (
+        <p className="text-sm text-emerald-700">
+          Added. They can sign in now — send them the link to the app.
+        </p>
+      )}
+    </form>
+  );
+}

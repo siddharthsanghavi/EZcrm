@@ -277,6 +277,41 @@ create trigger companies_status_change
 create index if not exists companies_owner_idx on companies (owner_id);
 create index if not exists tasks_assignee_idx  on tasks (assignee_id, done);
 
+-- ------------------------------------------------- role change safety
+-- RLS has no per-column granularity, so profiles_self_update would otherwise
+-- let a member set their own role to admin. Column privileges + a checked
+-- function close that.
+revoke update on public.profiles from authenticated;
+grant  update (full_name) on public.profiles to authenticated;
+
+create or replace function set_member_role(target uuid, new_role text)
+returns void
+language plpgsql
+security definer set search_path = public, pg_temp
+as $$
+declare admins int;
+begin
+  if not is_admin() then
+    raise exception 'Only admins can change roles';
+  end if;
+  if new_role not in ('member', 'admin') then
+    raise exception 'Invalid role';
+  end if;
+
+  -- Never leave the club without an admin.
+  if new_role = 'member' then
+    select count(*) into admins from profiles where role = 'admin';
+    if admins <= 1 and (select role from profiles where id = target) = 'admin' then
+      raise exception 'Cannot remove the last admin';
+    end if;
+  end if;
+
+  update profiles set role = new_role where id = target;
+end;
+$$;
+
+grant execute on function set_member_role(uuid, text) to authenticated;
+
 -- ---------------------------------------------------------------- bootstrap
 -- Replace with your own address, run it, then sign in once to create your user.
 -- After that, promote yourself:

@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { bulkApply } from '@/app/actions';
+import { BulkBar, SelectAll } from '@/components/bulk-bar';
 import { serverClient } from '@/lib/supabase';
 import {
   STATUS_LABELS,
@@ -167,16 +169,29 @@ export default async function CompaniesPage({
 
       {error && <p className="text-sm text-rose-700">{error.message}</p>}
 
+      <form id="bulk" action={bulkApply} className="space-y-3">
       <div className="card overflow-hidden">
         {companies && companies.length > 0 ? (
+          <>
+          <div className="flex items-center justify-between border-b border-black/10 px-5 py-2">
+            <SelectAll formId="bulk" />
+            <span className="text-xs text-black/35">tick companies to assign them in bulk</span>
+          </div>
           <ul className="divide-y divide-black/5">
             {companies.map((c) => {
               const contactCount = (c.contacts as unknown as { count: number }[])?.[0]?.count ?? 0;
               return (
-                <li key={c.id}>
+                <li key={c.id} className="flex items-center gap-3 pl-4 hover:bg-black/[0.02]">
+                  <input
+                    type="checkbox"
+                    name="ids"
+                    value={c.id}
+                    aria-label={`Select ${c.name}`}
+                    className="h-4 w-4 shrink-0 rounded border-black/25"
+                  />
                   <Link
                     href={`/companies/${c.id}`}
-                    className="flex items-center gap-4 px-5 py-3 hover:bg-black/[0.02]"
+                    className="flex flex-1 items-center gap-4 py-3 pr-5"
                   >
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-medium">{c.name}</div>
@@ -211,6 +226,7 @@ export default async function CompaniesPage({
               );
             })}
           </ul>
+          </>
         ) : (
           <div className="px-5 py-10 text-center text-sm text-black/45">
             No companies match.{' '}
@@ -225,6 +241,9 @@ export default async function CompaniesPage({
           </div>
         )}
       </div>
+
+      <BulkBar members={members ?? []} formId="bulk" />
+      </form>
 
       {lastPage > 1 && (
         <div className="flex items-center justify-between text-sm">

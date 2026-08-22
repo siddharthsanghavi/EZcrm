@@ -10,6 +10,8 @@ const NAV = [
   { href: '/contacts', label: 'Contacts' },
   { href: '/tasks', label: 'Tasks' },
   { href: '/import', label: 'Import / Export' },
+  { href: '/members', label: 'Members' },
+  { href: '/guide', label: 'Guide' },
 ];
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {

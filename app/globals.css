@@ -167,3 +167,46 @@
   cursor: pointer;
 }
 .ez-area:hover { background: var(--c); }
+
+/* ---------------------------------------------------------------- guide figures
+   Looping demonstrations in the guide. Written so the RESTING state is the
+   finished state -- boxes ticked, bar shown, row present -- and the animation
+   only plays where motion is welcome. Someone with reduced-motion set sees the
+   outcome rather than an empty form, which is the useful half anyway. */
+
+@media (prefers-reduced-motion: no-preference) {
+  .fig-tick    { animation: fig-tick 7s ease-in-out infinite; }
+  .fig-bar     { animation: fig-bar 7s ease-in-out infinite; }
+  .fig-press   { animation: fig-press 7s ease-in-out infinite; }
+  .fig-row     { animation: fig-row 7s ease-in-out infinite; }
+  .fig-d1 { animation-delay: 0.25s; }
+  .fig-d2 { animation-delay: 0.55s; }
+}
+
+/* Checkbox filling in. */
+@keyframes fig-tick {
+  0%, 8%    { background-color: transparent; border-color: rgb(var(--fg) / 0.25); }
+  14%, 78%  { background-color: rgb(var(--ink)); border-color: rgb(var(--ink)); }
+  86%, 100% { background-color: transparent; border-color: rgb(var(--fg) / 0.25); }
+}
+
+/* The bulk bar rising once something is selected. */
+@keyframes fig-bar {
+  0%, 16%   { opacity: 0; transform: translateY(8px); }
+  24%, 78%  { opacity: 1; transform: translateY(0); }
+  86%, 100% { opacity: 0; transform: translateY(8px); }
+}
+
+/* A button being pressed. */
+@keyframes fig-press {
+  0%, 40%   { box-shadow: 0 0 0 0 rgb(var(--accent) / 0.5); }
+  48%       { box-shadow: 0 0 0 5px rgb(var(--accent) / 0); transform: scale(0.97); }
+  56%, 100% { box-shadow: 0 0 0 0 rgb(var(--accent) / 0); transform: scale(1); }
+}
+
+/* The logged entry appearing in the timeline. */
+@keyframes fig-row {
+  0%, 50%   { opacity: 0; transform: translateY(-6px); max-height: 0; }
+  60%, 84%  { opacity: 1; transform: translateY(0); max-height: 80px; }
+  92%, 100% { opacity: 0; transform: translateY(-6px); max-height: 0; }
+}

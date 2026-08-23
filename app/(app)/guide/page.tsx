@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { serverClient } from '@/lib/supabase';
 import { CHANGELOG, LAST_UPDATED } from '@/lib/changelog';
-import { STATUS_LABELS, STATUSES } from '@/lib/types';
+import { STATUS_DOTS, STATUS_LABELS, STATUSES } from '@/lib/types';
+import { FigureClaim, FigureDashboard, FigureLog } from '@/components/guide-figures';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,9 +22,86 @@ export default async function GuidePage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">How to use EZcrm</h1>
         <p className="mt-1 text-sm text-black/55">
-          A five-minute tour. Last updated {new Date(LAST_UPDATED + 'T00:00:00').toLocaleDateString()}.
+          Read it through, or jump to the part you need. Last updated{' '}
+          {new Date(LAST_UPDATED + 'T00:00:00').toLocaleDateString()}.
         </p>
       </div>
+
+      <section className="card p-6">
+        <h2 className="text-sm font-semibold">First — what is a CRM?</h2>
+        <p className="mt-2 text-sm leading-relaxed text-black/70">
+          CRM stands for <strong>customer relationship management</strong>, which is a corporate way
+          of saying: <em>a shared memory of every conversation your group is having with people
+          outside it.</em> That is genuinely all it is. A spreadsheet is a list of companies; a CRM
+          also remembers who spoke to them, when, what was said, and what happens next.
+        </p>
+        <p className="mt-3 text-sm leading-relaxed text-black/70">
+          The problem it solves is specific. Outreach fails in two boring ways: two people email the
+          same company and the club looks disorganised, or someone gets a &ldquo;maybe, ask me in
+          September&rdquo; and nobody ever follows up. Both are memory failures, and both are
+          invisible until the opportunity is already gone. Group chats and spreadsheets don&apos;t
+          fix them, because neither one remembers <em>what happens next</em>.
+        </p>
+        <p className="mt-3 text-sm leading-relaxed text-black/70">
+          The trade is real, so it is worth saying plainly: this only works if people log things. It
+          costs about fifteen seconds after a call. In exchange the club stops losing companies to
+          silence, and whoever runs outreach next year inherits the history instead of starting from
+          nothing.
+        </p>
+      </section>
+
+      <section className="card p-6">
+        <h2 className="text-sm font-semibold">The four things it stores</h2>
+        <p className="mt-2 text-sm leading-relaxed text-black/70">
+          Everything here is one of four kinds of record, and they nest inside each other. Once this
+          clicks, the rest of the app is obvious.
+        </p>
+
+        <dl className="mt-4 space-y-3">
+          {MODEL.map((m) => (
+            <div key={m.term} className="flex gap-3.5">
+              <dt className="w-20 shrink-0 pt-0.5 text-sm font-semibold">{m.term}</dt>
+              <dd className="text-sm leading-relaxed text-black/65">
+                {m.body}
+                <div className="mt-0.5 text-xs text-black/40">{m.example}</div>
+              </dd>
+            </div>
+          ))}
+        </dl>
+
+        <p className="mt-4 border-t border-black/[0.07] pt-3 text-sm leading-relaxed text-black/65">
+          So: a <strong>company</strong> has <strong>people</strong> at it, you keep a record of{' '}
+          <strong>what has happened</strong> with them, and there is{' '}
+          <strong>one thing you owe them next</strong>. If you only ever do one thing in this app,
+          make it that last one.
+        </p>
+      </section>
+
+      <section className="card p-6">
+        <h2 className="text-sm font-semibold">What a week actually looks like</h2>
+        <ol className="mt-3 space-y-3 text-sm leading-relaxed text-black/70">
+          <li>
+            <strong>Monday, two minutes.</strong> Open the{' '}
+            <GuideLink href="/">Dashboard</GuideLink>. Anything under{' '}
+            <strong>Going cold</strong> is a company you started talking to and then went quiet on.
+            Those are the cheapest wins available to you, because they already replied once.
+          </li>
+          <li>
+            <strong>Clear anything overdue.</strong> It is at the top of{' '}
+            <GuideLink href="/tasks">Tasks</GuideLink>. Each one is a promise you made to yourself.
+          </li>
+          <li>
+            <strong>Pick up something new.</strong> Filter Companies to Tier 1 and Unassigned, take
+            three, and contact them. Three a week is over a hundred a year.
+          </li>
+          <li>
+            <strong>Log as you go, not later.</strong> After a call or an email, log it on the
+            company page and set the next step before you close the tab. Later does not come.
+          </li>
+        </ol>
+
+        <FigureDashboard />
+      </section>
 
       <section className="card p-6">
         <h2 className="text-sm font-semibold">What this is for</h2>
@@ -41,19 +119,12 @@ export default async function GuidePage() {
 
       <section className="card p-6">
         <h2 className="text-sm font-semibold">Start here: pick your companies</h2>
-        <ol className="mt-3 space-y-3 text-sm leading-relaxed text-black/70">
-          <li>
-            <strong>1.</strong> Go to <GuideLink href="/companies?tier=Tier+1">Companies</GuideLink>{' '}
-            and filter to <strong>Tier 1</strong>, then <strong>Unassigned</strong>.
-          </li>
-          <li>
-            <strong>2.</strong> Tick the checkboxes next to a handful you want to take.
-          </li>
-          <li>
-            <strong>3.</strong> In the bar that appears, choose your name and press{' '}
-            <strong>Assign</strong>. They&apos;re yours.
-          </li>
-        </ol>
+        <p className="mt-2 text-sm leading-relaxed text-black/70">
+          Go to <GuideLink href="/companies?tier=Tier+1">Companies</GuideLink>, filter to{' '}
+          <strong>Tier 1</strong> and <strong>Unassigned</strong>, and take a few:
+        </p>
+
+        <FigureClaim />
         <p className="mt-3 text-xs text-black/45">
           {mine ?? 0} of {(companies ?? 0).toLocaleString()} companies are assigned so far.
           Assignment isn&apos;t a lock — it just means everyone knows who&apos;s handling it.
@@ -65,7 +136,9 @@ export default async function GuidePage() {
         <p className="mt-2 text-sm leading-relaxed text-black/70">
           Open a company and you can do everything from that one page:
         </p>
-        <ul className="mt-3 space-y-2 text-sm leading-relaxed text-black/70">
+        <FigureLog />
+
+        <ul className="mt-5 space-y-2 text-sm leading-relaxed text-black/70">
           <li>
             <strong>Log activity</strong> every time you email, call, or meet them. This is the
             important habit — the timeline is how anyone else knows what&apos;s happened. Your name
@@ -90,7 +163,10 @@ export default async function GuidePage() {
         <dl className="mt-3 space-y-2 text-sm text-black/70">
           {STATUSES.map((s) => (
             <div key={s} className="flex gap-3">
-              <dt className="w-36 shrink-0 font-medium">{STATUS_LABELS[s]}</dt>
+              <dt className="flex w-36 shrink-0 items-center gap-2 font-medium">
+                <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${STATUS_DOTS[s]}`} />
+                {STATUS_LABELS[s]}
+              </dt>
               <dd className="text-black/60">{STATUS_HELP[s]}</dd>
             </div>
           ))}
@@ -191,6 +267,30 @@ export default async function GuidePage() {
     </div>
   );
 }
+
+/** The data model in plain English. Teaching this is most of teaching the app. */
+const MODEL = [
+  {
+    term: 'Company',
+    body: 'The organisation you want something from. Everything else hangs off one of these.',
+    example: 'Piedmont Tool & Die — a machine shop in Marietta',
+  },
+  {
+    term: 'Contact',
+    body: 'An actual person at that company, with their email and phone. Companies never reply to emails; people do.',
+    example: 'Dana Alvarez, Plant Manager',
+  },
+  {
+    term: 'Activity',
+    body: 'Something that already happened — a call, an email, a visit. This is the memory. Your name and the date are recorded for you.',
+    example: 'Called, left a voicemail with the front desk',
+  },
+  {
+    term: 'Task',
+    body: 'Something that has not happened yet, with a due date. This is the part that actually keeps outreach alive.',
+    example: 'Call Dana back — due Friday',
+  },
+];
 
 const STATUS_HELP: Record<string, string> = {
   prospect: 'On the list, nobody has reached out yet.',

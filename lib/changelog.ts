@@ -17,6 +17,15 @@ export type Change = {
 export const CHANGELOG: Change[] = [
   {
     date: '2026-08-22',
+    title: 'The guide explains itself now',
+    notes: [
+      'New up-front section on what a CRM actually is, and the four kinds of record everything here is made of.',
+      '“What a week looks like” — the short routine that keeps outreach from dying quietly.',
+      'Worked examples with numbered callouts showing how to claim companies and log what happened.',
+    ],
+  },
+  {
+    date: '2026-08-22',
     title: 'A refreshed look',
     notes: [
       'Navigation moved to a rail down the left, with a live count beside each section — so you can see there are 12 open tasks without opening Tasks.',

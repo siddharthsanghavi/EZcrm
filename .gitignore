@@ -20,3 +20,8 @@ data/
 # Deployment-specific notes, kept out of the shared repo.
 DEPLOYMENT.local.md
 *.local.md
+
+# Seeded design-canvas payload: ~2MB of generated editor code, rebuilt from the
+# .dc.html sources next to it. The sources are the thing worth keeping.
+design/*.html
+!design/*.dc.html

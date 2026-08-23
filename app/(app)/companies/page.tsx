@@ -8,7 +8,7 @@ import {
   ACTIVE_STAGES,
   COLD_AFTER_DAYS,
   STATUS_LABELS,
-  STATUS_STYLES,
+  STATUS_DOTS,
   STATUSES,
   TIER_STYLES,
   TIERS,
@@ -225,11 +225,11 @@ export default async function CompaniesPage({
       <div className="card overflow-hidden">
         {companies && companies.length > 0 ? (
           <>
-          <div className="flex items-center justify-between border-b border-black/10 px-5 py-2">
+          <div className="flex items-center justify-between border-b border-black/[0.08] px-5 py-2">
             <SelectAll formId="bulk" />
             <span className="text-xs text-black/35">tick companies to assign them in bulk</span>
           </div>
-          <ul className="divide-y divide-black/5">
+          <ul className="divide-y divide-black/[0.06]">
             {companies.map((c) => {
               const contactCount = (c.contacts as unknown as { count: number }[])?.[0]?.count ?? 0;
               return (
@@ -281,8 +281,14 @@ export default async function CompaniesPage({
                       <span className={`chip shrink-0 ${TIER_STYLES[c.tier] ?? ''}`}>{c.tier}</span>
                     )}
 
-                    <span className={`chip shrink-0 ${STATUS_STYLES[c.status as Status]}`}>
-                      {STATUS_LABELS[c.status as Status]}
+                    <span className="flex w-[116px] shrink-0 items-center gap-1.5">
+                      <span
+                        aria-hidden
+                        className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_DOTS[c.status as Status]}`}
+                      />
+                      <span className="truncate text-xs text-black/55">
+                        {STATUS_LABELS[c.status as Status]}
+                      </span>
                     </span>
                   </Link>
                 </li>

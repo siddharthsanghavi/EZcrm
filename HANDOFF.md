@@ -47,6 +47,23 @@ Members, Guide.
   `updated_at` moves when someone fixes a typo. The trigger refuses to move a
   touch backwards, so back-dating an old call can't make a company look colder.
 
+- **The visual system is "Console"**, chosen from two directions drafted on a
+  design canvas. What it commits to: a nav **rail** with per-section counts
+  (`components/nav-rail.tsx`, collapsing to a top strip below `lg` — members
+  work from phones on plant floors), **Archivo** self-hosted via `next/font`,
+  **teal (`--accent`) alongside amber**, flat `10px` cards with no shadow, and
+  status as a **dot plus a word** (`STATUS_DOTS`) rather than a pastel pill.
+
+  Chips (`STATUS_STYLES`) still exist and are still right where the status is
+  the subject rather than one column of many — the company detail header. Don't
+  "finish the job" by replacing those too.
+
+  One measured constraint worth keeping: in dark mode `--rail` equals
+  `--surface`, mirroring light mode where both are white. Recessing the rail
+  instead was tried and is measurably worse — against a near-black page, going
+  darker tops out near a 1.05 contrast ratio, so the rail stops reading as a
+  region at all.
+
 - **Dark mode redefines what `black` and `white` mean**, rather than adding 190
   `dark:` variants. `tailwind.config.ts` maps `black` to a `--fg` variable and
   `white` to `--surface`, so every existing `text-black/45` and `bg-white`

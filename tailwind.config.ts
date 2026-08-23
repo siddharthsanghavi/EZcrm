@@ -19,14 +19,31 @@ export default {
   content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],
   theme: {
     extend: {
+      fontFamily: {
+        sans: [
+          'var(--font-archivo)',
+          'ui-sans-serif',
+          'system-ui',
+          '-apple-system',
+          'Segoe UI',
+          'Roboto',
+          'Helvetica Neue',
+          'Arial',
+          'sans-serif',
+        ],
+      },
       colors: {
         black: 'rgb(var(--fg) / <alpha-value>)',
         white: 'rgb(var(--surface) / <alpha-value>)',
         ink: 'rgb(var(--ink) / <alpha-value>)',
         paper: 'rgb(var(--paper) / <alpha-value>)',
+        // The nav rail sits a shade off the page so it reads as furniture
+        // rather than as content.
+        rail: 'rgb(var(--rail) / <alpha-value>)',
 
         // Semantic accents. Named by meaning rather than hue so the dark theme
         // can lighten them without every call site having to know.
+        accent: 'rgb(var(--accent) / <alpha-value>)',
         danger: 'rgb(var(--danger) / <alpha-value>)',
         success: 'rgb(var(--success) / <alpha-value>)',
         warn: 'rgb(var(--warn) / <alpha-value>)',

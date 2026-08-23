@@ -17,6 +17,17 @@ export type Change = {
 export const CHANGELOG: Change[] = [
   {
     date: '2026-08-22',
+    title: 'A refreshed look',
+    notes: [
+      'Navigation moved to a rail down the left, with a live count beside each section — so you can see there are 12 open tasks without opening Tasks.',
+      'On a phone it stays a strip across the top, so nothing is lost on a small screen.',
+      'Status is now a coloured dot and a word instead of a pastel badge, which makes long lists far easier to read.',
+      'The dashboard shows the pipeline as one row with a proportional bar, so you can see the shape of it rather than six equal boxes.',
+      'New typeface throughout, and teal joins amber as the second accent.',
+    ],
+  },
+  {
+    date: '2026-08-22',
     title: 'Sign-in tracking',
     notes: [
       'Admins can now see sign-ins on the Members page: who got in, when, and how many attempts failed.',

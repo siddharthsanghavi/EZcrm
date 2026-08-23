@@ -1,0 +1,40 @@
+{
+  "artboards": [
+    { "file": "Current.dc.html",       "title": "Today",                  "x": 0,    "y": 0,    "w": 1280, "h": 900 },
+    { "file": "Main.dc.html",          "title": "A · Ledger — Dashboard", "x": 1400, "y": 0,    "w": 1280, "h": 900 },
+    { "file": "Companies.dc.html",     "title": "A · Ledger — Companies", "x": 1400, "y": 990,  "w": 1280, "h": 860 },
+    { "file": "Signal.dc.html",        "title": "B · Console — Dashboard","x": 2800, "y": 0,    "w": 1280, "h": 900 },
+    { "file": "SignalMembers.dc.html", "title": "B · Console — Members",  "x": 2800, "y": 990,  "w": 1280, "h": 940 }
+  ],
+  "annotations": [
+    {
+      "id": "baseline",
+      "x": 0,
+      "y": -190,
+      "w": 380,
+      "text": "TODAY\n\nThe app as it ships, rebuilt from the real Tailwind classes — #12151a on #fbfaf8, rounded-lg cards, shadow-sm, 14px body.\n\nHere so the two directions get judged against the thing, not against memory. Flip the dark tweak on any artboard."
+    },
+    {
+      "id": "dir-a",
+      "x": 1400,
+      "y": -190,
+      "w": 420,
+      "text": "A · LEDGER\n\nThe bet: this is a worklist, not a dashboard. Card chrome comes off, hairline rules replace it, and Newsreader carries the figures. Going cold is promoted to the lead story with days-waited set in serif.\n\nWhy: nothing in the app is more useful than \"who is about to go quiet\", and it was a panel below six boxes.\n\nTradeoff: less obviously \"an app\". Fewer affordances are drawn, so a new member has less to click at."
+    },
+    {
+      "id": "dir-b",
+      "x": 2800,
+      "y": -190,
+      "w": 420,
+      "text": "B · CONSOLE\n\nThe bet: structure, not subtraction. Nav moves to a rail with live counts, Archivo replaces the system stack, teal joins amber, and status becomes a dot plus a word instead of a pastel pill.\n\nWhy: the top bar competes with every page heading, and seven destinations with counts beside them beats seven text links.\n\nTradeoff: 216px of permanent furniture, and the biggest departure from what's shipped."
+    },
+    {
+      "id": "shared",
+      "x": 1400,
+      "y": 1900,
+      "w": 700,
+      "text": "BOTH KEEP: the ink-on-paper base, the token-inversion dark mode, tabular figures, and amber reserved strictly for \"needs attention\" — so neither is a rewrite of the palette, and both drop into the existing Tailwind tokens.\n\nControls are live. Filter pills filter, the scope and range toggles change the data, and every artboard has a dark tweak above it."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}

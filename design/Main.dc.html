@@ -1,0 +1,206 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap">
+  <style>
+    :root { --paper: #faf9f6; --surface: #ffffff; --ink: #12151a; --fg: 0 0 0; --rule: rgb(0 0 0 / 0.09); }
+    .dark { --paper: #0f1115; --surface: #16191e; --ink: #edf0f5; --fg: 255 255 255; --rule: rgb(255 255 255 / 0.12); }
+    body { margin: 0; }
+    .app {
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      background: var(--paper); color: var(--ink);
+    }
+    .serif { font-family: Newsreader, Georgia, "Times New Roman", serif; }
+    a { color: #b45309; text-decoration: none; } a:hover { color: #92400e; }
+    .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: rgb(var(--fg) / 0.4); }
+    .row + .row { border-top: 1px solid var(--rule); }
+    .pill { cursor: pointer; border-radius: 999px; padding: 4px 12px; font-size: 12px; font-weight: 500; transition: background 0.15s, color 0.15s; }
+  </style>
+</helmet>
+
+<div class="app {{themeClass}}" style="min-height: 900px">
+
+  <header style="border-bottom: 1px solid var(--rule)">
+    <div style="max-width: 1152px; margin: 0 auto; display: flex; align-items: baseline; gap: 28px; padding: 16px 24px">
+      <span class="serif" style="font-size: 19px; font-weight: 600; letter-spacing: -0.01em">EZcrm</span>
+      <nav style="display: flex; flex: 1; align-items: baseline; gap: 20px">
+        <sc-for list="{{nav}}" as="item" hint-placeholder-count="7">
+          <span style="font-size: 13px; font-weight: {{item.weight}}; color: {{item.color}}; padding-bottom: 2px; border-bottom: {{item.underline}}">{{item.label}}</span>
+        </sc-for>
+      </nav>
+      <span class="eyebrow">Sid</span>
+    </div>
+  </header>
+
+  <main style="max-width: 1152px; margin: 0 auto; padding: 36px 24px; display: flex; flex-direction: column; gap: 36px">
+
+    <!-- The band replaces six boxes: one continuous rule of figures, so the
+         eye reads the shape of the pipeline instead of six separate cards. -->
+    <div>
+      <div class="eyebrow" style="margin-bottom: 14px">Pipeline · 1,263 companies</div>
+      <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule)">
+        <sc-for list="{{stages}}" as="s" hint-placeholder-count="6">
+          <div style="padding: 18px 20px 18px 0; border-left: {{s.divider}}; padding-left: {{s.padLeft}}">
+            <div class="serif" style="font-size: 34px; line-height: 38px; font-weight: 500; font-variant-numeric: tabular-nums; color: {{s.tone}}">{{s.count}}</div>
+            <div class="eyebrow" style="margin-top: 6px">{{s.label}}</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <!-- Going cold is the whole reason this app exists, so it is the page's
+         lead story rather than a panel below the fold. -->
+    <section>
+      <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 4px">
+        <h2 class="serif" style="margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em">
+          Going cold
+        </h2>
+        <div style="display: flex; align-items: center; gap: 6px">
+          <sc-for list="{{filters}}" as="f" hint-placeholder-count="3">
+            <span class="pill" onClick="{{f.pick}}" style="background: {{f.bg}}; color: {{f.fg}}">{{f.label}}</span>
+          </sc-for>
+        </div>
+      </div>
+      <p style="margin: 0 0 18px; font-size: 13px; color: rgb(var(--fg) / 0.5)">
+        {{coldCount}} in play, untouched for three weeks or more. Longest wait first.
+      </p>
+
+      <div style="border-top: 1px solid var(--rule)">
+        <sc-for list="{{cold}}" as="c" hint-placeholder-count="5">
+          <div class="row" style="display: grid; grid-template-columns: 72px 1fr 120px 132px; align-items: baseline; gap: 16px; padding: 14px 0">
+            <div class="serif" style="font-size: 22px; font-weight: 500; font-variant-numeric: tabular-nums; color: #b45309">{{c.days}}</div>
+            <div>
+              <div style="font-size: 15px; font-weight: 500">{{c.name}}</div>
+              <div style="margin-top: 2px; font-size: 12px; color: rgb(var(--fg) / 0.45)">{{c.meta}}</div>
+            </div>
+            <div style="font-size: 13px; color: rgb(var(--fg) / 0.55)">{{c.owner}}</div>
+            <div class="eyebrow" style="color: {{c.statusTone}}">{{c.status}}</div>
+          </div>
+        </sc-for>
+      </div>
+
+      <sc-if value="{{isEmpty}}" hint-placeholder-val="{{false}}">
+        <p style="margin: 24px 0; font-size: 13px; color: rgb(var(--fg) / 0.4)">Nothing matches that filter.</p>
+      </sc-if>
+    </section>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 44px">
+      <section>
+        <div class="eyebrow" style="margin-bottom: 12px">Owed next</div>
+        <div style="border-top: 1px solid var(--rule)">
+          <sc-for list="{{tasks}}" as="t" hint-placeholder-count="4">
+            <div class="row" style="display: flex; align-items: baseline; gap: 12px; padding: 11px 0">
+              <span style="height: 14px; width: 14px; flex-shrink: 0; border-radius: 3px; border: 1px solid rgb(var(--fg) / 0.25); transform: translateY(2px)"></span>
+              <span style="flex: 1; font-size: 14px">{{t.title}}</span>
+              <span style="font-size: 12px; font-weight: {{t.weight}}; color: {{t.dueColor}}">{{t.due}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+
+      <section>
+        <div class="eyebrow" style="margin-bottom: 12px">Lately</div>
+        <div style="border-top: 1px solid var(--rule)">
+          <sc-for list="{{activity}}" as="a" hint-placeholder-count="4">
+            <div class="row" style="padding: 11px 0">
+              <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px">
+                <span style="font-size: 14px">{{a.subject}}</span>
+                <span style="flex-shrink: 0; font-size: 12px; color: rgb(var(--fg) / 0.35)">{{a.when}}</span>
+              </div>
+              <div style="margin-top: 2px; font-size: 12px; color: rgb(var(--fg) / 0.45)">
+                {{a.type}} · {{a.company}}
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+    </div>
+
+  </main>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"dark":{"editor":"boolean","default":false,"section":"Theme"}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { filter: 'all' };
+  }
+
+  renderVals() {
+    const dark = this.props.dark ?? false;
+    const muted = (a) => 'rgb(var(--fg) / ' + a + ')';
+
+    const all = [
+      { days: '34', name: 'Piedmont Tool & Die',      meta: 'Machine Shop · Marietta · 180 staff', owner: 'Sid',    status: 'Contacted',       tier: 'Tier 1', assigned: true },
+      { days: '29', name: 'Chattahoochee Composites', meta: 'OEM · Columbus · 420 staff',          owner: 'Rishit', status: 'In conversation', tier: 'Tier 1', assigned: true },
+      { days: '27', name: 'Northside Fabrication',    meta: 'Integrator · Kennesaw · 95 staff',    owner: '—',      status: 'Contacted',       tier: 'Tier 2', assigned: false },
+      { days: '23', name: 'Kennesaw Precision Works', meta: 'Machine Shop · Kennesaw · 60 staff',  owner: 'Val',    status: 'Contacted',       tier: 'Tier 1', assigned: true },
+      { days: '21', name: 'Marietta Gear',            meta: 'Large Manufacturer · Marietta',       owner: '—',      status: 'In conversation', tier: 'Tier 2', assigned: false },
+    ];
+
+    const filter = this.state.filter;
+    const shown = all
+      .filter((c) => filter === 'all' || (filter === 'tier1' ? c.tier === 'Tier 1' : !c.assigned))
+      .map((c) => ({ ...c, statusTone: c.status === 'In conversation' ? '#b45309' : muted(0.45) }));
+
+    const on = dark ? '#edf0f5' : '#12151a';
+    const onFg = dark ? '#16191e' : '#ffffff';
+    const filters = [
+      { key: 'all',    label: 'All 14' },
+      { key: 'tier1',  label: 'Tier 1' },
+      { key: 'unowned', label: 'Unassigned' },
+    ].map((f) => ({
+      label: f.label,
+      bg: filter === f.key ? on : muted(0.05),
+      fg: filter === f.key ? onFg : muted(0.55),
+      pick: () => this.setState({ filter: f.key }),
+    }));
+
+    return {
+      themeClass: dark ? 'dark' : '',
+      nav: ['Dashboard', 'Companies', 'Pipeline', 'Map', 'Contacts', 'Tasks', 'Members'].map((label, i) => ({
+        label,
+        weight: i === 0 ? '600' : '400',
+        color: i === 0 ? 'var(--ink)' : muted(0.5),
+        underline: i === 0 ? '1.5px solid #b45309' : '1.5px solid transparent',
+      })),
+      stages: [
+        { label: 'Prospect',    count: '1,204' }, { label: 'Contacted',  count: '31' },
+        { label: 'Talking',     count: '12' },    { label: 'Committed',  count: '6' },
+        { label: 'Declined',    count: '7' },     { label: 'Dormant',    count: '3' },
+      ].map((s, i) => ({
+        ...s,
+        tone: s.label === 'Committed' ? '#0f766e' : 'var(--ink)',
+        divider: i === 0 ? 'none' : '1px solid var(--rule)',
+        padLeft: i === 0 ? '0' : '20px',
+      })),
+      filters,
+      cold: shown,
+      coldCount: shown.length === 14 ? '14 companies' : shown.length + ' of 14',
+      isEmpty: shown.length === 0,
+      tasks: [
+        { title: 'Send sponsorship deck to Piedmont', due: 'Overdue',  dueColor: '#b45309',  weight: '600' },
+        { title: 'Confirm tour date — Northside',     due: 'Aug 24',   dueColor: muted(0.4), weight: '400' },
+        { title: 'Follow up with Marietta Gear',      due: 'Aug 26',   dueColor: muted(0.4), weight: '400' },
+        { title: 'Chase signed waiver',               due: 'Sep 2',    dueColor: muted(0.4), weight: '400' },
+      ],
+      activity: [
+        { subject: 'Spoke with plant manager',  type: 'Call',    company: 'Piedmont Tool & Die',      when: 'Yesterday' },
+        { subject: 'Sent sponsorship deck',     type: 'Email',   company: 'Chattahoochee Composites', when: '2d ago' },
+        { subject: 'Tour walkthrough',          type: 'Meeting', company: 'Northside Fabrication',    when: '4d ago' },
+        { subject: 'Prefers contact after 3pm', type: 'Note',    company: 'Marietta Gear',            when: '5d ago' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

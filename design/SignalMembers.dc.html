@@ -1,0 +1,255 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap">
+  <style>
+    :root { --paper: #f7f7f5; --surface: #ffffff; --ink: #12151a; --fg: 0 0 0; --rule: rgb(0 0 0 / 0.08); --rail: #ffffff; }
+    .dark { --paper: #0e1013; --surface: #17191d; --ink: #edf0f5; --fg: 255 255 255; --rule: rgb(255 255 255 / 0.1); --rail: #121417; }
+    body { margin: 0; }
+    .app {
+      font-family: Archivo, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      background: var(--paper); color: var(--ink);
+    }
+    a { color: #0f766e; text-decoration: none; } a:hover { color: #115e56; }
+    .card { border-radius: 10px; border: 1px solid var(--rule); background: var(--surface); }
+    .row + .row { border-top: 1px solid var(--rule); }
+    .pill { cursor: pointer; border-radius: 6px; padding: 5px 11px; font-size: 12px; font-weight: 500; }
+    .navitem { display: flex; align-items: center; gap: 10px; border-radius: 7px; padding: 7px 10px; font-size: 13.5px; }
+  </style>
+</helmet>
+
+<div class="app {{themeClass}}" style="min-height: 940px; display: flex">
+
+  <aside style="width: 216px; flex-shrink: 0; border-right: 1px solid var(--rule); background: var(--rail); padding: 18px 12px; display: flex; flex-direction: column; gap: 18px">
+    <div style="display: flex; align-items: center; gap: 9px; padding: 0 10px">
+      <span style="display: inline-flex; height: 24px; width: 24px; align-items: center; justify-content: center; border-radius: 6px; background: #0f766e; color: #ffffff; font-size: 12px; font-weight: 700">EZ</span>
+      <span style="font-size: 15px; font-weight: 600; letter-spacing: -0.01em">EZcrm</span>
+    </div>
+    <nav style="display: flex; flex-direction: column; gap: 2px">
+      <sc-for list="{{nav}}" as="item" hint-placeholder-count="7">
+        <div class="navitem" style="background: {{item.bg}}; color: {{item.color}}; font-weight: {{item.weight}}">
+          <span style="height: 6px; width: 6px; border-radius: 999px; background: {{item.dot}}"></span>
+          <span style="flex: 1">{{item.label}}</span>
+          <span style="font-size: 11.5px; color: rgb(var(--fg) / 0.35); font-variant-numeric: tabular-nums">{{item.count}}</span>
+        </div>
+      </sc-for>
+    </nav>
+  </aside>
+
+  <main style="flex: 1; padding: 28px 32px; display: flex; flex-direction: column; gap: 20px; max-width: 860px">
+
+    <div>
+      <h1 style="margin: 0; font-size: 21px; font-weight: 600; letter-spacing: -0.015em">Members</h1>
+      <p style="margin: 3px 0 0; font-size: 13px; color: rgb(var(--fg) / 0.5)">Anyone on this list can sign in. Everyone sees the same companies.</p>
+    </div>
+
+    <section class="card" style="overflow: hidden">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--rule); padding: 13px 20px">
+        <h2 style="margin: 0; font-size: 14px; font-weight: 600">Sign-ins</h2>
+        <div style="display: flex; align-items: center; gap: 14px">
+          <span style="font-size: 12px; color: rgb(var(--fg) / 0.45)">{{summary}}</span>
+          <div style="display: flex; gap: 4px; background: rgb(var(--fg) / 0.05); border-radius: 8px; padding: 3px">
+            <sc-for list="{{ranges}}" as="r" hint-placeholder-count="2">
+              <span class="pill" onClick="{{r.pick}}" style="background: {{r.bg}}; color: {{r.fg}}; box-shadow: {{r.shadow}}">{{r.label}}</span>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding: 18px 20px">
+        <div style="display: flex; align-items: flex-end; gap: 6px; height: 96px">
+          <sc-for list="{{bars}}" as="b" hint-placeholder-count="7">
+            <div style="flex: 1; display: flex; flex-direction: column; justify-content: flex-end; height: 96px; gap: 2px">
+              <span style="display: block; height: {{b.failH}}; background: #e11d48; border-radius: 3px 3px 0 0"></span>
+              <span style="display: block; height: {{b.okH}}; background: #0f766e; border-radius: {{b.okRadius}}"></span>
+              <span style="display: block; height: {{b.emptyH}}; background: rgb(var(--fg) / 0.06); border-radius: 3px"></span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="margin-top: 7px; display: flex">
+          <sc-for list="{{bars}}" as="b" hint-placeholder-count="7">
+            <span style="flex: 1; text-align: center; font-size: 10.5px; color: rgb(var(--fg) / 0.35)">{{b.label}}</span>
+          </sc-for>
+        </div>
+
+        <div style="margin-top: 16px; display: flex; align-items: center; gap: 16px; font-size: 11.5px; color: rgb(var(--fg) / 0.45)">
+          <span style="display: flex; align-items: center; gap: 6px">
+            <span style="height: 7px; width: 7px; border-radius: 2px; background: #0f766e"></span> Signed in
+          </span>
+          <span style="display: flex; align-items: center; gap: 6px">
+            <span style="height: 7px; width: 7px; border-radius: 2px; background: #e11d48"></span> Failed
+          </span>
+        </div>
+
+        <!-- The shortfall is the number the panel exists for: links asked for
+             that never became a session. -->
+        <div style="margin-top: 16px; border-top: 1px solid var(--rule); padding-top: 14px; display: flex; align-items: baseline; gap: 8px">
+          <span style="font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; color: #b45309">{{shortfall}}</span>
+          <span style="font-size: 13px; color: rgb(var(--fg) / 0.55)">
+            of {{linksAsked}} link requests never became a session — someone wanted in and didn&rsquo;t get there.
+          </span>
+        </div>
+      </div>
+
+      <div style="border-top: 1px solid var(--rule); padding: 14px 20px">
+        <div style="font-size: 12px; font-weight: 600; color: rgb(var(--fg) / 0.45); margin-bottom: 9px">Why sign-ins failed</div>
+        <div style="display: flex; align-items: baseline; gap: 10px; font-size: 13px">
+          <span style="font-weight: 600; font-variant-numeric: tabular-nums; width: 22px">1&times;</span>
+          <span style="color: rgb(var(--fg) / 0.6)">PKCE code verifier not found in storage</span>
+        </div>
+        <p style="margin: 9px 0 0; font-size: 11.5px; color: rgb(var(--fg) / 0.42); max-width: 62ch">
+          Links opened in a different browser than asked for them — normal, since mail apps use their own.
+          If that dominates, point the Supabase email template at <code style="font-size: 11px">/auth/confirm</code>.
+        </p>
+      </div>
+    </section>
+
+    <section class="card" style="overflow: hidden">
+      <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--rule); padding: 13px 20px">
+        <h2 style="margin: 0; font-size: 14px; font-weight: 600">Sign-in emails · last 24 hours</h2>
+        <span style="font-size: 12px; color: rgb(var(--fg) / 0.45)">2 sent · last 2h ago</span>
+      </div>
+
+      <div style="padding: 18px 20px">
+        <!-- The ceiling is drawn, not described: bars touching it are hours
+             when the next person to try was turned away. -->
+        <div style="position: relative">
+          <div style="position: absolute; left: 0; right: 0; bottom: 66.6%; border-top: 1px dashed rgba(180, 83, 9, 0.6)"></div>
+          <div style="position: absolute; right: 0; bottom: 66.6%; transform: translateY(-100%); font-size: 10px; font-weight: 600; color: #b45309; padding-bottom: 3px">CEILING · 2/hr</div>
+          <div style="display: flex; align-items: flex-end; gap: 3px; height: 72px">
+            <sc-for list="{{hours}}" as="h" hint-placeholder-count="24">
+              <div style="flex: 1; display: flex; flex-direction: column; justify-content: flex-end; height: 72px">
+                <span style="display: block; height: {{h.height}}; background: {{h.tone}}; border-radius: 2px"></span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <div style="margin-top: 7px; display: flex">
+          <sc-for list="{{hours}}" as="h" hint-placeholder-count="24">
+            <span style="flex: 1; text-align: center; font-size: 10px; color: rgb(var(--fg) / 0.3)">{{h.label}}</span>
+          </sc-for>
+        </div>
+        <p style="margin: 14px 0 0; font-size: 12px; color: rgb(var(--fg) / 0.5); max-width: 66ch">
+          The allowance is shared by the whole club, not two each. Raising it means custom SMTP —
+          the built-in sender can&rsquo;t be turned up.
+        </p>
+      </div>
+    </section>
+
+    <section class="card" style="overflow: hidden">
+      <h2 style="margin: 0; border-bottom: 1px solid var(--rule); padding: 12px 20px; font-size: 13.5px; font-weight: 600">Signed-in members · 3</h2>
+      <div>
+        <sc-for list="{{members}}" as="m" hint-placeholder-count="3">
+          <div class="row" style="display: flex; align-items: center; gap: 12px; padding: 12px 20px">
+            <span style="display: inline-flex; height: 28px; width: 28px; align-items: center; justify-content: center; border-radius: 999px; background: rgb(var(--fg) / 0.07); font-size: 11.5px; font-weight: 600">{{m.initial}}</span>
+            <div style="flex: 1; min-width: 0">
+              <div style="font-size: 13.5px; font-weight: 500">{{m.name}}</div>
+              <div style="font-size: 11.5px; color: rgb(var(--fg) / 0.42)">{{m.email}}</div>
+            </div>
+            <span style="font-size: 11.5px; color: rgb(var(--fg) / 0.4)">{{m.seen}}</span>
+            <span style="border-radius: 5px; padding: 2px 8px; font-size: 11px; font-weight: 600; background: {{m.roleBg}}; color: {{m.roleFg}}">{{m.role}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+  </main>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"dark":{"editor":"boolean","default":false,"section":"Theme"}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { range: '7d' };
+  }
+
+  renderVals() {
+    const dark = this.props.dark ?? false;
+    const muted = (a) => 'rgb(var(--fg) / ' + a + ')';
+
+    const week = [
+      { label: 'S', ok: 0, fail: 0 }, { label: 'M', ok: 2, fail: 0 },
+      { label: 'T', ok: 1, fail: 0 }, { label: 'W', ok: 0, fail: 0 },
+      { label: 'T', ok: 3, fail: 1 }, { label: 'F', ok: 1, fail: 0 },
+      { label: 'S', ok: 1, fail: 1 },
+    ];
+    const fortnight = week.concat(week).slice(0, 14).map((d, i) => ({ ...d, label: i % 2 === 0 ? d.label : '' }));
+
+    const source = this.state.range === '7d' ? week : fortnight;
+    const peak = Math.max(1, ...source.map((d) => d.ok + d.fail));
+    const px = (n) => Math.round((n / peak) * 88);
+
+    const bars = source.map((d) => ({
+      label: d.label,
+      okH: d.ok ? px(d.ok) + 'px' : '0px',
+      failH: d.fail ? px(d.fail) + 'px' : '0px',
+      emptyH: d.ok + d.fail === 0 ? '2px' : '0px',
+      okRadius: d.fail ? '0 0 3px 3px' : '3px',
+    }));
+
+    const okTotal = source.reduce((n, d) => n + d.ok, 0);
+    const failTotal = source.reduce((n, d) => n + d.fail, 0);
+
+    // 24 hourly slots; the two real requests land in the same recent hour.
+    const hours = Array.from({ length: 24 }, (_, i) => {
+      const count = i === 21 ? 2 : 0;
+      const hour = (i + 19) % 24;
+      const h12 = hour % 12 === 0 ? 12 : hour % 12;
+      return {
+        label: i % 6 === 0 ? h12 + (hour < 12 ? 'a' : 'p') : '',
+        height: count === 0 ? '2px' : Math.round((count / 3) * 72) + 'px',
+        tone: count >= 2 ? '#b45309' : (count === 0 ? muted(0.06) : '#0f766e'),
+      };
+    });
+
+    const on = dark ? '#edf0f5' : '#12151a';
+    const onFg = dark ? '#17191d' : '#ffffff';
+
+    return {
+      themeClass: dark ? 'dark' : '',
+      nav: [
+        { label: 'Dashboard', count: '' }, { label: 'Companies', count: '1,263' },
+        { label: 'Pipeline', count: '' },  { label: 'Map', count: '' },
+        { label: 'Contacts', count: '84' },{ label: 'Tasks', count: '12' },
+        { label: 'Members', count: '3' },
+      ].map((item, i) => ({
+        ...item,
+        bg: i === 6 ? muted(0.06) : 'transparent',
+        color: i === 6 ? 'var(--ink)' : muted(0.62),
+        weight: i === 6 ? '600' : '400',
+        dot: i === 6 ? '#0f766e' : 'transparent',
+      })),
+      ranges: [
+        { key: '7d', label: '7 days' }, { key: '14d', label: '14 days' },
+      ].map((r) => ({
+        label: r.label,
+        bg: this.state.range === r.key ? 'var(--surface)' : 'transparent',
+        fg: this.state.range === r.key ? 'var(--ink)' : muted(0.5),
+        shadow: this.state.range === r.key ? '0 1px 2px rgb(0 0 0 / 0.06)' : 'none',
+        pick: () => this.setState({ range: r.key }),
+      })),
+      bars,
+      summary: okTotal + ' in · ' + failTotal + ' failed',
+      shortfall: '2',
+      linksAsked: '10',
+      hours,
+      members: [
+        { initial: 'S', name: 'Sid',    email: 'siddharth.sanghavi.360@gmail.com', seen: '2h ago', role: 'admin',  roleBg: 'rgba(124,58,237,0.13)', roleFg: '#7c3aed' },
+        { initial: 'R', name: 'Rishit', email: 'jainrishit77@gmail.com',           seen: '3d ago', role: 'member', roleBg: muted(0.06),             roleFg: muted(0.5) },
+        { initial: 'V', name: 'Val',    email: 'val.93002@gmail.com',              seen: '6d ago', role: 'member', roleBg: muted(0.06),             roleFg: muted(0.5) },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

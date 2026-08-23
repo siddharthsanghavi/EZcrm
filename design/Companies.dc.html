@@ -1,0 +1,186 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap">
+  <style>
+    :root { --paper: #faf9f6; --surface: #ffffff; --ink: #12151a; --fg: 0 0 0; --rule: rgb(0 0 0 / 0.09); }
+    .dark { --paper: #0f1115; --surface: #16191e; --ink: #edf0f5; --fg: 255 255 255; --rule: rgb(255 255 255 / 0.12); }
+    body { margin: 0; }
+    .app {
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      background: var(--paper); color: var(--ink);
+    }
+    .serif { font-family: Newsreader, Georgia, "Times New Roman", serif; }
+    a { color: #b45309; text-decoration: none; } a:hover { color: #92400e; }
+    .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: rgb(var(--fg) / 0.4); }
+    .row + .row { border-top: 1px solid var(--rule); }
+    .row:hover { background: rgb(var(--fg) / 0.02); }
+    .pill { cursor: pointer; border-radius: 999px; padding: 4px 11px; font-size: 12px; font-weight: 500; }
+  </style>
+</helmet>
+
+<div class="app {{themeClass}}" style="min-height: 860px">
+
+  <header style="border-bottom: 1px solid var(--rule)">
+    <div style="max-width: 1152px; margin: 0 auto; display: flex; align-items: baseline; gap: 28px; padding: 16px 24px">
+      <span class="serif" style="font-size: 19px; font-weight: 600; letter-spacing: -0.01em">EZcrm</span>
+      <nav style="display: flex; flex: 1; align-items: baseline; gap: 20px">
+        <sc-for list="{{nav}}" as="item" hint-placeholder-count="7">
+          <span style="font-size: 13px; font-weight: {{item.weight}}; color: {{item.color}}; padding-bottom: 2px; border-bottom: {{item.underline}}">{{item.label}}</span>
+        </sc-for>
+      </nav>
+      <span class="eyebrow">Sid</span>
+    </div>
+  </header>
+
+  <main style="max-width: 1152px; margin: 0 auto; padding: 36px 24px; display: flex; flex-direction: column; gap: 24px">
+
+    <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 16px">
+      <div>
+        <h1 class="serif" style="margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -0.015em">Companies</h1>
+        <p style="margin: 4px 0 0; font-size: 13px; color: rgb(var(--fg) / 0.5)">{{matchLine}}</p>
+      </div>
+      <span style="border-radius: 6px; background: var(--ink); color: {{btnFg}}; padding: 8px 14px; font-size: 13px; font-weight: 500">Add company</span>
+    </div>
+
+    <!-- Saved views sit above the filters, because a saved view IS a filter
+         someone already thought about -- reaching for it should beat rebuilding. -->
+    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+      <span class="eyebrow" style="margin-right: 2px">Views</span>
+      <sc-for list="{{views}}" as="v" hint-placeholder-count="3">
+        <span class="pill" onClick="{{v.pick}}" style="background: {{v.bg}}; color: {{v.fg}}">{{v.label}}</span>
+      </sc-for>
+      <span class="pill" style="border: 1px dashed rgb(var(--fg) / 0.2); color: rgb(var(--fg) / 0.4); padding: 3px 10px">+ Save this view</span>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); padding: 12px 0">
+      <div style="display: flex; align-items: center; gap: 6px; border: 1px solid rgb(var(--fg) / 0.15); border-radius: 6px; padding: 6px 10px; width: 240px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgb(var(--fg) / 0.35)" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path>
+        </svg>
+        <span style="font-size: 13px; color: rgb(var(--fg) / 0.35)">Search name, city, specialty</span>
+      </div>
+      <span class="eyebrow" style="margin-left: 6px">Tier</span>
+      <sc-for list="{{tiers}}" as="t" hint-placeholder-count="4">
+        <span class="pill" onClick="{{t.pick}}" style="background: {{t.bg}}; color: {{t.fg}}">{{t.label}}</span>
+      </sc-for>
+      <span class="eyebrow" style="margin-left: 6px">Attention</span>
+      <span class="pill" onClick="{{toggleCold}}" style="background: {{coldBg}}; color: {{coldFg}}">Going cold</span>
+    </div>
+
+    <div>
+      <div style="display: grid; grid-template-columns: 1fr 120px 96px 92px 132px; gap: 16px; padding: 0 0 8px">
+        <span class="eyebrow">Company</span>
+        <span class="eyebrow">Owner</span>
+        <span class="eyebrow" style="text-align: right">Last touch</span>
+        <span class="eyebrow">Tier</span>
+        <span class="eyebrow">Status</span>
+      </div>
+
+      <div style="border-top: 1px solid var(--rule)">
+        <sc-for list="{{rows}}" as="c" hint-placeholder-count="8">
+          <div class="row" style="display: grid; grid-template-columns: 1fr 120px 96px 92px 132px; align-items: baseline; gap: 16px; padding: 13px 0">
+            <div>
+              <div style="font-size: 15px; font-weight: 500">{{c.name}}</div>
+              <div style="margin-top: 2px; font-size: 12px; color: rgb(var(--fg) / 0.45)">{{c.meta}}</div>
+            </div>
+            <div style="font-size: 13px; color: {{c.ownerTone}}">{{c.owner}}</div>
+            <div class="serif" style="text-align: right; font-size: 16px; font-variant-numeric: tabular-nums; color: {{c.touchTone}}">{{c.touch}}</div>
+            <div class="eyebrow" style="color: {{c.tierTone}}">{{c.tier}}</div>
+            <div class="eyebrow" style="color: {{c.statusTone}}">{{c.status}}</div>
+          </div>
+        </sc-for>
+      </div>
+
+      <sc-if value="{{isEmpty}}" hint-placeholder-val="{{false}}">
+        <p style="margin: 28px 0; font-size: 13px; color: rgb(var(--fg) / 0.4)">Nothing matches. Clear the filters to see all 1,263.</p>
+      </sc-if>
+    </div>
+
+  </main>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"dark":{"editor":"boolean","default":false,"section":"Theme"}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { tier: 'any', cold: false, view: null };
+  }
+
+  renderVals() {
+    const dark = this.props.dark ?? false;
+    const muted = (a) => 'rgb(var(--fg) / ' + a + ')';
+    const on = dark ? '#edf0f5' : '#12151a';
+    const onFg = dark ? '#16191e' : '#ffffff';
+
+    const data = [
+      { name: 'Piedmont Tool & Die',      meta: 'Machine Shop · Marietta',  owner: 'Sid',    touch: '34d', tier: 'Tier 1', status: 'Contacted',       cold: true },
+      { name: 'Chattahoochee Composites', meta: 'OEM · Columbus',           owner: 'Rishit', touch: '29d', tier: 'Tier 1', status: 'In conversation', cold: true },
+      { name: 'Northside Fabrication',    meta: 'Integrator · Kennesaw',    owner: '—',      touch: '27d', tier: 'Tier 2', status: 'Contacted',       cold: true },
+      { name: 'Kennesaw Precision Works', meta: 'Machine Shop · Kennesaw',  owner: 'Val',    touch: '23d', tier: 'Tier 1', status: 'Contacted',       cold: true },
+      { name: 'Allatoona Metalworks',     meta: 'Machine Shop · Acworth',   owner: 'Sid',    touch: '6d',  tier: 'Tier 1', status: 'Committed',       cold: false },
+      { name: 'Sweetwater Plastics',      meta: 'OEM · Austell',            owner: 'Val',    touch: '2d',  tier: 'Tier 2', status: 'In conversation', cold: false },
+      { name: 'Etowah Machine',           meta: 'Machine Shop · Cartersville', owner: '—',   touch: 'never', tier: 'Tier 3', status: 'Prospect',      cold: false },
+      { name: 'Blue Ridge Automation',    meta: 'Integrator · Dalton',      owner: '—',      touch: 'never', tier: 'Tier 3', status: 'Prospect',      cold: false },
+    ];
+
+    const st = this.state;
+    const rows = data
+      .filter((c) => (st.tier === 'any' || c.tier === st.tier) && (!st.cold || c.cold))
+      .map((c) => ({
+        ...c,
+        ownerTone: c.owner === '—' ? muted(0.3) : muted(0.6),
+        touchTone: c.cold ? '#b45309' : (c.touch === 'never' ? muted(0.3) : muted(0.5)),
+        tierTone: c.tier === 'Tier 1' ? '#7c3aed' : muted(0.4),
+        statusTone: c.status === 'Committed' ? '#0f766e' : muted(0.5),
+      }));
+
+    const pill = (active) => ({ bg: active ? on : muted(0.05), fg: active ? onFg : muted(0.55) });
+
+    return {
+      themeClass: dark ? 'dark' : '',
+      btnFg: onFg,
+      nav: ['Dashboard', 'Companies', 'Pipeline', 'Map', 'Contacts', 'Tasks', 'Members'].map((label, i) => ({
+        label,
+        weight: i === 1 ? '600' : '400',
+        color: i === 1 ? 'var(--ink)' : muted(0.5),
+        underline: i === 1 ? '1.5px solid #b45309' : '1.5px solid transparent',
+      })),
+      views: [
+        { key: 'tier1-unowned', label: 'Tier 1, unassigned' },
+        { key: 'cold-committed', label: 'Cold & committed' },
+      ].map((v) => ({
+        label: v.label,
+        ...pill(st.view === v.key),
+        pick: () => this.setState({ view: st.view === v.key ? null : v.key }),
+      })),
+      tiers: [
+        { key: 'any', label: 'Any' }, { key: 'Tier 1', label: 'Tier 1' },
+        { key: 'Tier 2', label: 'Tier 2' }, { key: 'Tier 3', label: 'Tier 3' },
+      ].map((t) => ({
+        label: t.label,
+        ...pill(st.tier === t.key),
+        pick: () => this.setState({ tier: t.key }),
+      })),
+      coldBg: st.cold ? '#b45309' : muted(0.05),
+      coldFg: st.cold ? '#ffffff' : muted(0.55),
+      toggleCold: () => this.setState({ cold: !st.cold }),
+      rows,
+      isEmpty: rows.length === 0,
+      matchLine: rows.length === data.length
+        ? '1,263 companies · Tier 1 first'
+        : rows.length + ' shown of 1,263',
+    };
+  }
+}
+</script>
+</body>
+</html>

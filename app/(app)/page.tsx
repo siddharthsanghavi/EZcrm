@@ -2,9 +2,10 @@ import Link from 'next/link';
 import { serverClient } from '@/lib/supabase';
 import {
   COLD_AFTER_DAYS,
+  STATUS_DOTS,
   STATUS_LABELS,
-  STATUS_STYLES,
   STATUSES,
+  daysSince,
   displayName,
   isCold,
   sinceLabel,
@@ -48,6 +49,8 @@ export default async function Dashboard() {
   // else. Already ordered oldest-touch-first by the query, so the top of this
   // list is the worst of it.
   const cold = all.filter((c) => isCold(c.status as Status, c.last_touch_at));
+  // Never-touched has no day count, so it anchors the bar at full length.
+  const worstCold = Math.max(0, ...cold.map((c) => daysSince(c.last_touch_at) ?? Infinity).filter(Number.isFinite));
 
   return (
     <div className="space-y-8">
@@ -59,53 +62,114 @@ export default async function Dashboard() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        {STATUSES.map((status) => (
-          <Link
-            key={status}
-            href={`/companies?status=${status}`}
-            className="card p-4 transition hover:border-black/25"
-          >
-            <div className="text-2xl font-semibold tabular-nums">{counts[status]}</div>
-            <div className="mt-1 text-xs text-black/55">{STATUS_LABELS[status]}</div>
-          </Link>
-        ))}
-      </div>
+      {/* One card rather than six, with a proportional bar underneath: the
+          split between stages is the thing worth seeing, and six equal boxes
+          actively hide it — 1,204 prospects and 6 committed look the same. */}
+      <section className="card px-5 py-4">
+        <div className="grid grid-cols-3 gap-4 sm:grid-cols-6">
+          {STATUSES.map((status) => (
+            <Link key={status} href={`/companies?status=${status}`} className="group">
+              <div className="flex items-center gap-1.5">
+                <span aria-hidden className={`h-[7px] w-[7px] rounded-full ${STATUS_DOTS[status]}`} />
+                <span className="truncate text-xs text-black/55">{STATUS_LABELS[status]}</span>
+              </div>
+              <div className="mt-1 text-[25px] font-semibold leading-8 tracking-tight tabular-nums
+                              transition group-hover:text-accent">
+                {counts[status].toLocaleString()}
+              </div>
+            </Link>
+          ))}
+        </div>
+
+        {all.length > 0 && (
+          <div className="mt-4 flex h-[5px] gap-0.5 overflow-hidden rounded-full">
+            {STATUSES.filter((s) => counts[s] > 0).map((status) => (
+              <span
+                key={status}
+                title={`${STATUS_LABELS[status]} · ${counts[status]}`}
+                className={STATUS_DOTS[status]}
+                style={{ flexGrow: counts[status] }}
+              />
+            ))}
+          </div>
+        )}
+      </section>
 
       {cold.length > 0 && (
         <section className="card overflow-hidden">
-          <div className="flex items-center justify-between border-b border-black/10 px-5 py-3">
-            <h2 className="text-sm font-semibold">
-              Going cold · {cold.length} untouched in {COLD_AFTER_DAYS}+ days
-            </h2>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-black/[0.08] px-5 py-3">
+            <div className="flex items-center gap-2.5">
+              <svg
+                width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                className="text-warn" aria-hidden
+              >
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 7v5l3 2" />
+              </svg>
+              <h2 className="text-sm font-semibold">Going cold</h2>
+              <span className="rounded-md bg-warn/[0.14] px-1.5 py-px text-[11.5px] font-semibold text-warn">
+                {cold.length}
+              </span>
+              <span className="hidden text-xs text-black/45 sm:inline">
+                untouched {COLD_AFTER_DAYS}+ days
+              </span>
+            </div>
             {cold.length > 5 && (
               <Link href="/companies?cold=1" className="text-xs text-black/45 hover:text-ink">
                 See all →
               </Link>
             )}
           </div>
-          <ul className="divide-y divide-black/5">
+
+          <ul className="divide-y divide-black/[0.06]">
             {cold.slice(0, 5).map((c) => {
               const owner = c.profiles as unknown as
                 | { full_name: string | null; email: string }
                 | null;
+              const days = daysSince(c.last_touch_at);
+              // Bar length is how overdue it is, against the worst on the list.
+              // The number alone reads flat; the bar makes the top of the list
+              // look as urgent as it is.
+              const share = days === null ? 1 : Math.min(1, days / Math.max(worstCold, 1));
+
               return (
                 <li key={c.id}>
                   <Link
                     href={`/companies/${c.id}`}
-                    className="flex items-center gap-3 px-5 py-3 text-sm hover:bg-black/[0.02]"
+                    className="flex items-center gap-3 px-5 py-3 text-sm hover:bg-black/[0.02] sm:gap-4"
                   >
                     <span className="min-w-0 flex-1 truncate font-medium">{c.name}</span>
+
+                    <span className="hidden shrink-0 items-center gap-1.5 sm:flex">
+                      <span
+                        aria-hidden
+                        className={`h-1.5 w-1.5 rounded-full ${STATUS_DOTS[c.status as Status]}`}
+                      />
+                      <span className="text-xs text-black/55">
+                        {STATUS_LABELS[c.status as Status]}
+                      </span>
+                    </span>
+
                     {owner && (
-                      <span className="hidden shrink-0 text-xs text-black/45 sm:block">
+                      <span className="hidden w-20 shrink-0 truncate text-xs text-black/45 lg:block">
                         {displayName(owner)}
                       </span>
                     )}
-                    <span className="shrink-0 text-xs font-medium text-warn">
-                      {sinceLabel(c.last_touch_at)}
-                    </span>
-                    <span className={`chip shrink-0 ${STATUS_STYLES[c.status as Status]}`}>
-                      {STATUS_LABELS[c.status as Status]}
+
+                    <span className="flex shrink-0 items-center gap-2">
+                      <span
+                        aria-hidden
+                        className="hidden h-1 w-16 overflow-hidden rounded-full bg-black/[0.07] sm:block"
+                      >
+                        <span
+                          className="block h-1 rounded-full bg-warn"
+                          style={{ width: `${Math.round(share * 100)}%` }}
+                        />
+                      </span>
+                      <span className="w-14 text-right text-xs font-semibold tabular-nums text-warn">
+                        {sinceLabel(c.last_touch_at)}
+                      </span>
                     </span>
                   </Link>
                 </li>

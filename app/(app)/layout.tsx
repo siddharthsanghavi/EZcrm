@@ -1,19 +1,6 @@
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { currentProfile } from '@/lib/supabase';
-import { ThemeToggle } from '@/components/theme-toggle';
-
-const NAV = [
-  { href: '/', label: 'Dashboard' },
-  { href: '/companies', label: 'Companies' },
-  { href: '/pipeline', label: 'Pipeline' },
-  { href: '/map', label: 'Map' },
-  { href: '/contacts', label: 'Contacts' },
-  { href: '/tasks', label: 'Tasks' },
-  { href: '/import', label: 'Import / Export' },
-  { href: '/members', label: 'Members' },
-  { href: '/guide', label: 'Guide' },
-];
+import { currentProfile, serverClient } from '@/lib/supabase';
+import { NavRail, type RailCounts } from '@/components/nav-rail';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   // Signed in but not on the allowlist means no profile row, and RLS would show
@@ -21,37 +8,31 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const profile = await currentProfile();
   if (!profile) redirect('/no-access');
 
+  const supabase = await serverClient();
+
+  // Counts for the rail. `head: true` fetches no rows, so these are four cheap
+  // COUNT queries — worth it to make a destination worth clicking. Open tasks
+  // only: a rail badge counting finished work would be noise.
+  const [companies, contacts, tasks, members] = await Promise.all([
+    supabase.from('companies').select('id', { count: 'exact', head: true }),
+    supabase.from('contacts').select('id', { count: 'exact', head: true }),
+    supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('done', false),
+    supabase.from('profiles').select('id', { count: 'exact', head: true }),
+  ]);
+
+  const counts: RailCounts = {
+    companies: companies.count,
+    contacts: contacts.count,
+    tasks: tasks.count,
+    members: members.count,
+  };
+
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-black/10 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center gap-6 px-6 py-3">
-          <Link href="/" className="text-sm font-semibold tracking-tight">
-            EZcrm
-          </Link>
-
-          <nav className="flex flex-1 items-center gap-1">
-            {NAV.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="rounded-md px-3 py-1.5 text-sm text-black/65 hover:bg-black/[0.04] hover:text-ink"
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-
-          <div className="flex items-center gap-3">
-            <ThemeToggle />
-            <span className="hidden text-xs text-black/45 sm:block">{profile.email}</span>
-            <form action="/auth/signout" method="post">
-              <button className="text-xs text-black/45 hover:text-ink">Sign out</button>
-            </form>
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+    <div className="flex min-h-screen flex-col lg:flex-row">
+      <NavRail profile={profile} counts={counts} />
+      <main className="min-w-0 flex-1 px-5 py-7 sm:px-8">
+        <div className="mx-auto max-w-5xl">{children}</div>
+      </main>
     </div>
   );
 }

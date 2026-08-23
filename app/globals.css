@@ -9,7 +9,10 @@
   --fg: 0 0 0;
   --surface: 255 255 255;
   --ink: 18 21 26;
-  --paper: 251 250 248;
+  --paper: 247 247 245;
+  --rail: 255 255 255;
+
+  --accent: 15 118 110;
 
   --danger: 190 18 60;
   --success: 4 120 87;
@@ -20,7 +23,7 @@
   --st-neutral-box: #f1f5f9;  --st-neutral-text: #334155;  --st-neutral-edge: #cbd5e1;
   --st-blue-box:    #dbeafe;  --st-blue-text:    #1e40af;  --st-blue-edge:    #93c5fd;
   --st-amber-box:   #fef3c7;  --st-amber-text:   #92400e;  --st-amber-edge:   #fcd34d;
-  --st-green-box:   #d1fae5;  --st-green-text:   #065f46;  --st-green-edge:   #6ee7b7;
+  --st-green-box:   #ccfbf1;  --st-green-text:   #0f766e;  --st-green-edge:   #5eead4;
   --st-rose-box:    #ffe4e6;  --st-rose-text:    #9f1239;  --st-rose-edge:    #fda4af;
   --st-dormant-text: #64748b;
   --st-arrow: #94a3b8;
@@ -34,9 +37,17 @@
   --fg: 255 255 255;
   /* Cards sit slightly above the page rather than below it, the same way the
      light theme puts white cards on off-white paper. */
-  --surface: 24 27 32;
+  --surface: 23 25 29;
   --ink: 237 240 245;
-  --paper: 15 17 21;
+  --paper: 14 16 19;
+  /* The rail matches the card surface, exactly as it does in light mode where
+     both are white. Recessing it instead was measurably worse: against a
+     near-black page, going darker tops out around a 1.05 contrast ratio, so
+     the rail stopped reading as a distinct region at all. */
+  --rail: 23 25 29;
+
+  /* Lifted for contrast on a near-black surface. */
+  --accent: 45 212 191;
 
   /* Lightened: rose-700 on a near-black card fails contrast badly. */
   --danger: 253 164 175;
@@ -48,7 +59,7 @@
   --st-neutral-box: #1e242c;  --st-neutral-text: #cbd5e1;  --st-neutral-edge: #3a4453;
   --st-blue-box:    #16263f;  --st-blue-text:    #93c5fd;  --st-blue-edge:    #2f4d78;
   --st-amber-box:   #33260d;  --st-amber-text:   #fcd34d;  --st-amber-edge:   #6b5115;
-  --st-green-box:   #0d2b21;  --st-green-text:   #6ee7b7;  --st-green-edge:   #1c5644;
+  --st-green-box:   #0c2b28;  --st-green-text:   #2dd4bf;  --st-green-edge:   #175a52;
   --st-rose-box:    #351520;  --st-rose-text:    #fda4af;  --st-rose-edge:    #6b2b3a;
   --st-dormant-text: #8b98a9;
   --st-arrow: #64748b;
@@ -68,7 +79,7 @@
 
 @layer components {
   .card {
-    @apply rounded-lg border border-black/10 bg-white shadow-sm;
+    @apply rounded-[10px] border border-black/[0.08] bg-white;
   }
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm
@@ -82,13 +93,20 @@
   }
   .field {
     @apply w-full rounded-md border border-black/15 bg-white px-3 py-2 text-sm
-           outline-none focus:border-ink/40 focus:ring-2 focus:ring-ink/10;
+           outline-none focus:border-accent/50 focus:ring-2 focus:ring-accent/15;
   }
   .label {
     @apply mb-1 block text-xs font-medium uppercase tracking-wide text-black/50;
   }
   .chip {
     @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
+  }
+  .railitem {
+    @apply flex items-center gap-2.5 rounded-[7px] px-2.5 py-[7px] text-[13.5px]
+           text-black/60 transition hover:bg-black/[0.05] hover:text-ink;
+  }
+  .railitem-active {
+    @apply bg-black/[0.06] font-semibold text-ink;
   }
 }
 

@@ -1,5 +1,18 @@
 import type { Metadata, Viewport } from 'next';
+import { Archivo } from 'next/font/google';
 import './globals.css';
+
+/**
+ * Self-hosted at build time by next/font, so there is no request to Google at
+ * runtime and no layout shift while it loads. `variable` feeds the Tailwind
+ * font stack; the fallbacks below it in tailwind.config.ts still apply if the
+ * face fails to load.
+ */
+const archivo = Archivo({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-archivo',
+});
 
 export const metadata: Metadata = {
   title: 'EZcrm',
@@ -35,7 +48,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     // suppressHydrationWarning: the script above edits <html>'s class list
     // before React hydrates, so the server and client markup differ by design.
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className={archivo.variable} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: APPLY_THEME }} />
       </head>

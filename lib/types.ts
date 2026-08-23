@@ -41,6 +41,23 @@ export const STATUS_STYLES: Record<Status, string> = {
   dormant: 'bg-slate-100 text-slate-500 dark:bg-slate-400/10 dark:text-slate-400',
 };
 
+/**
+ * Status as a dot plus a word, for dense lists.
+ *
+ * A pastel pill on every row turns a list into a field of colour and the eye
+ * stops reading any of it. A 6px dot carries the same information at a tenth
+ * of the ink, and the label stays plain text. Chips are still right where a
+ * status is the subject rather than one column of many — the company header.
+ */
+export const STATUS_DOTS: Record<Status, string> = {
+  prospect: 'bg-slate-400',
+  contacted: 'bg-blue-500',
+  in_conversation: 'bg-warn',
+  committed: 'bg-accent',
+  declined: 'bg-rose-500',
+  dormant: 'bg-black/20',
+};
+
 export const INTERESTS = ['tour', 'sponsorship'] as const;
 export type Interest = (typeof INTERESTS)[number];
 

@@ -1,0 +1,267 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap">
+  <style>
+    :root { --paper: #f7f7f5; --surface: #ffffff; --ink: #12151a; --fg: 0 0 0; --rule: rgb(0 0 0 / 0.08); --rail: #ffffff; }
+    .dark { --paper: #0e1013; --surface: #17191d; --ink: #edf0f5; --fg: 255 255 255; --rule: rgb(255 255 255 / 0.1); --rail: #121417; }
+    body { margin: 0; }
+    .app {
+      font-family: Archivo, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      background: var(--paper); color: var(--ink);
+    }
+    a { color: #0f766e; text-decoration: none; } a:hover { color: #115e56; }
+    .card { border-radius: 10px; border: 1px solid var(--rule); background: var(--surface); }
+    .row + .row { border-top: 1px solid var(--rule); }
+    .row:hover { background: rgb(var(--fg) / 0.02); }
+    .pill { cursor: pointer; border-radius: 6px; padding: 5px 11px; font-size: 12px; font-weight: 500; }
+    .navitem { display: flex; align-items: center; gap: 10px; border-radius: 7px; padding: 7px 10px; font-size: 13.5px; }
+  </style>
+</helmet>
+
+<div class="app {{themeClass}}" style="min-height: 900px; display: flex">
+
+  <!-- A rail instead of a top bar: the nav stops competing with the page
+       heading, and there is room for counts beside each destination. -->
+  <aside style="width: 216px; flex-shrink: 0; border-right: 1px solid var(--rule); background: var(--rail); padding: 18px 12px; display: flex; flex-direction: column; gap: 18px">
+    <div style="display: flex; align-items: center; gap: 9px; padding: 0 10px">
+      <span style="display: inline-flex; height: 24px; width: 24px; align-items: center; justify-content: center; border-radius: 6px; background: #0f766e; color: #ffffff; font-size: 12px; font-weight: 700">EZ</span>
+      <span style="font-size: 15px; font-weight: 600; letter-spacing: -0.01em">EZcrm</span>
+    </div>
+
+    <nav style="display: flex; flex-direction: column; gap: 2px">
+      <sc-for list="{{nav}}" as="item" hint-placeholder-count="7">
+        <div class="navitem" style="background: {{item.bg}}; color: {{item.color}}; font-weight: {{item.weight}}">
+          <span style="height: 6px; width: 6px; border-radius: 999px; background: {{item.dot}}"></span>
+          <span style="flex: 1">{{item.label}}</span>
+          <span style="font-size: 11.5px; color: rgb(var(--fg) / 0.35); font-variant-numeric: tabular-nums">{{item.count}}</span>
+        </div>
+      </sc-for>
+    </nav>
+
+    <div style="margin-top: auto; border-top: 1px solid var(--rule); padding: 12px 10px 0; display: flex; align-items: center; gap: 8px">
+      <span style="display: inline-flex; height: 26px; width: 26px; align-items: center; justify-content: center; border-radius: 999px; background: rgb(var(--fg) / 0.07); font-size: 11px; font-weight: 600">S</span>
+      <div style="min-width: 0">
+        <div style="font-size: 12.5px; font-weight: 500">Sid</div>
+        <div style="font-size: 11px; color: rgb(var(--fg) / 0.4)">Admin</div>
+      </div>
+    </div>
+  </aside>
+
+  <main style="flex: 1; padding: 28px 32px; display: flex; flex-direction: column; gap: 22px">
+
+    <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 20px">
+      <div>
+        <h1 style="margin: 0; font-size: 21px; font-weight: 600; letter-spacing: -0.015em">Dashboard</h1>
+        <p style="margin: 3px 0 0; font-size: 13px; color: rgb(var(--fg) / 0.5)">1,263 companies · 49 in play · 3 tasks overdue</p>
+      </div>
+      <div style="display: flex; gap: 4px; background: rgb(var(--fg) / 0.05); border-radius: 8px; padding: 3px">
+        <sc-for list="{{scopes}}" as="s" hint-placeholder-count="2">
+          <span class="pill" onClick="{{s.pick}}" style="background: {{s.bg}}; color: {{s.fg}}; box-shadow: {{s.shadow}}">{{s.label}}</span>
+        </sc-for>
+      </div>
+    </div>
+
+    <!-- One card, six figures, and a proportional bar underneath: the split
+         between stages is the thing worth seeing, not six equal boxes. -->
+    <section class="card" style="padding: 18px 20px">
+      <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px">
+        <sc-for list="{{stages}}" as="s" hint-placeholder-count="6">
+          <div>
+            <div style="display: flex; align-items: center; gap: 6px">
+              <span style="height: 7px; width: 7px; border-radius: 999px; background: {{s.dot}}"></span>
+              <span style="font-size: 12px; color: rgb(var(--fg) / 0.5)">{{s.label}}</span>
+            </div>
+            <div style="margin-top: 5px; font-size: 25px; line-height: 30px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.02em">{{s.count}}</div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="margin-top: 16px; display: flex; height: 5px; gap: 2px; overflow: hidden; border-radius: 999px">
+        <sc-for list="{{stages}}" as="s" hint-placeholder-count="6">
+          <span style="flex-grow: {{s.share}}; background: {{s.dot}}"></span>
+        </sc-for>
+      </div>
+    </section>
+
+    <section class="card" style="overflow: hidden">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--rule); padding: 13px 20px">
+        <div style="display: flex; align-items: center; gap: 9px">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path>
+          </svg>
+          <h2 style="margin: 0; font-size: 14px; font-weight: 600">Going cold</h2>
+          <span style="border-radius: 5px; background: rgba(180, 83, 9, 0.12); color: #b45309; padding: 1px 7px; font-size: 11.5px; font-weight: 600">{{coldCount}}</span>
+        </div>
+        <div style="display: flex; gap: 5px">
+          <sc-for list="{{filters}}" as="f" hint-placeholder-count="3">
+            <span class="pill" onClick="{{f.pick}}" style="background: {{f.bg}}; color: {{f.fg}}">{{f.label}}</span>
+          </sc-for>
+        </div>
+      </div>
+
+      <div>
+        <sc-for list="{{cold}}" as="c" hint-placeholder-count="5">
+          <div class="row" style="display: grid; grid-template-columns: 1fr 108px 150px 96px; align-items: center; gap: 16px; padding: 12px 20px">
+            <div style="min-width: 0">
+              <div style="font-size: 14px; font-weight: 500">{{c.name}}</div>
+              <div style="margin-top: 1px; font-size: 11.5px; color: rgb(var(--fg) / 0.42)">{{c.meta}}</div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 7px">
+              <span style="height: 6px; width: 6px; border-radius: 999px; background: {{c.dot}}"></span>
+              <span style="font-size: 12.5px; color: rgb(var(--fg) / 0.6)">{{c.status}}</span>
+            </div>
+            <!-- Bar length is how overdue it is; the number alone reads flat. -->
+            <div style="display: flex; align-items: center; gap: 9px">
+              <span style="height: 4px; flex: 1; border-radius: 999px; background: rgb(var(--fg) / 0.07); overflow: hidden; display: block">
+                <span style="display: block; height: 4px; width: {{c.bar}}; background: #b45309; border-radius: 999px"></span>
+              </span>
+              <span style="font-size: 12px; font-weight: 600; color: #b45309; font-variant-numeric: tabular-nums; width: 34px; text-align: right">{{c.days}}</span>
+            </div>
+            <div style="font-size: 12.5px; color: {{c.ownerTone}}; text-align: right">{{c.owner}}</div>
+          </div>
+        </sc-for>
+      </div>
+
+      <sc-if value="{{isEmpty}}" hint-placeholder-val="{{false}}">
+        <p style="margin: 0; padding: 26px 20px; font-size: 13px; color: rgb(var(--fg) / 0.4)">Nothing matches that filter.</p>
+      </sc-if>
+    </section>
+
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px">
+      <section class="card" style="overflow: hidden">
+        <h2 style="margin: 0; border-bottom: 1px solid var(--rule); padding: 12px 18px; font-size: 13.5px; font-weight: 600">Owed next</h2>
+        <div>
+          <sc-for list="{{tasks}}" as="t" hint-placeholder-count="4">
+            <div class="row" style="display: flex; align-items: center; gap: 11px; padding: 11px 18px">
+              <span style="height: 15px; width: 15px; flex-shrink: 0; border-radius: 4px; border: 1.5px solid {{t.boxTone}}"></span>
+              <span style="flex: 1; font-size: 13.5px">{{t.title}}</span>
+              <span style="border-radius: 5px; padding: 1px 7px; font-size: 11.5px; font-weight: 500; background: {{t.dueBg}}; color: {{t.dueFg}}">{{t.due}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+
+      <section class="card" style="overflow: hidden">
+        <h2 style="margin: 0; border-bottom: 1px solid var(--rule); padding: 12px 18px; font-size: 13.5px; font-weight: 600">Lately</h2>
+        <div>
+          <sc-for list="{{activity}}" as="a" hint-placeholder-count="4">
+            <div class="row" style="display: flex; gap: 11px; padding: 11px 18px">
+              <span style="margin-top: 5px; height: 6px; width: 6px; flex-shrink: 0; border-radius: 999px; background: {{a.dot}}"></span>
+              <div style="flex: 1; min-width: 0">
+                <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 10px">
+                  <span style="font-size: 13.5px">{{a.subject}}</span>
+                  <span style="flex-shrink: 0; font-size: 11.5px; color: rgb(var(--fg) / 0.35)">{{a.when}}</span>
+                </div>
+                <div style="margin-top: 1px; font-size: 11.5px; color: rgb(var(--fg) / 0.42)">{{a.company}}</div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+    </div>
+
+  </main>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"dark":{"editor":"boolean","default":false,"section":"Theme"}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { filter: 'all', scope: 'everyone' };
+  }
+
+  renderVals() {
+    const dark = this.props.dark ?? false;
+    const muted = (a) => 'rgb(var(--fg) / ' + a + ')';
+    const teal = '#0f766e';
+    const amber = '#b45309';
+
+    const all = [
+      { days: '34d', bar: '100%', name: 'Piedmont Tool & Die',      meta: 'Machine Shop · Marietta',  owner: 'Sid',    status: 'Contacted',       tier1: true,  mine: true },
+      { days: '29d', bar: '85%',  name: 'Chattahoochee Composites', meta: 'OEM · Columbus',           owner: 'Rishit', status: 'In conversation', tier1: true,  mine: false },
+      { days: '27d', bar: '79%',  name: 'Northside Fabrication',    meta: 'Integrator · Kennesaw',    owner: '—',      status: 'Contacted',       tier1: false, mine: false },
+      { days: '23d', bar: '68%',  name: 'Kennesaw Precision Works', meta: 'Machine Shop · Kennesaw',  owner: 'Val',    status: 'Contacted',       tier1: true,  mine: false },
+      { days: '21d', bar: '62%',  name: 'Marietta Gear',            meta: 'Large Manufacturer',       owner: '—',      status: 'In conversation', tier1: false, mine: false },
+    ];
+
+    const st = this.state;
+    const cold = all
+      .filter((c) => (st.filter === 'all' || (st.filter === 'tier1' ? c.tier1 : c.owner === '—')))
+      .filter((c) => st.scope === 'everyone' || c.mine)
+      .map((c) => ({
+        ...c,
+        dot: c.status === 'In conversation' ? amber : '#3b82f6',
+        ownerTone: c.owner === '—' ? muted(0.3) : muted(0.55),
+      }));
+
+    const on = dark ? '#edf0f5' : '#12151a';
+    const onFg = dark ? '#17191d' : '#ffffff';
+    const pill = (active) => ({ bg: active ? on : 'transparent', fg: active ? onFg : muted(0.55) });
+
+    const stageDots = ['#94a3b8', '#3b82f6', amber, teal, '#e11d48', muted(0.25)];
+
+    return {
+      themeClass: dark ? 'dark' : '',
+      nav: [
+        { label: 'Dashboard', count: '' }, { label: 'Companies', count: '1,263' },
+        { label: 'Pipeline', count: '' },  { label: 'Map', count: '' },
+        { label: 'Contacts', count: '84' },{ label: 'Tasks', count: '12' },
+        { label: 'Members', count: '3' },
+      ].map((item, i) => ({
+        ...item,
+        bg: i === 0 ? muted(0.06) : 'transparent',
+        color: i === 0 ? 'var(--ink)' : muted(0.62),
+        weight: i === 0 ? '600' : '400',
+        dot: i === 0 ? teal : 'transparent',
+      })),
+      scopes: [
+        { key: 'everyone', label: 'Everyone' }, { key: 'mine', label: 'Mine' },
+      ].map((s) => ({
+        label: s.label,
+        bg: st.scope === s.key ? 'var(--surface)' : 'transparent',
+        fg: st.scope === s.key ? 'var(--ink)' : muted(0.5),
+        shadow: st.scope === s.key ? '0 1px 2px rgb(0 0 0 / 0.06)' : 'none',
+        pick: () => this.setState({ scope: s.key }),
+      })),
+      stages: [
+        { label: 'Prospect', count: '1,204', share: 60 }, { label: 'Contacted', count: '31', share: 14 },
+        { label: 'Talking',  count: '12',    share: 10 }, { label: 'Committed', count: '6',  share: 7 },
+        { label: 'Declined', count: '7',     share: 5 },  { label: 'Dormant',   count: '3',  share: 4 },
+      ].map((s, i) => ({ ...s, dot: stageDots[i] })),
+      filters: [
+        { key: 'all', label: 'All' }, { key: 'tier1', label: 'Tier 1' }, { key: 'unowned', label: 'Unassigned' },
+      ].map((f) => ({
+        label: f.label,
+        bg: st.filter === f.key ? on : muted(0.05),
+        fg: st.filter === f.key ? onFg : muted(0.55),
+        pick: () => this.setState({ filter: f.key }),
+      })),
+      cold,
+      coldCount: cold.length + ' of 14',
+      isEmpty: cold.length === 0,
+      tasks: [
+        { title: 'Send sponsorship deck to Piedmont', due: 'Overdue', dueBg: 'rgba(180,83,9,0.12)', dueFg: amber,      boxTone: amber },
+        { title: 'Confirm tour date — Northside',     due: 'Aug 24',  dueBg: 'transparent',         dueFg: muted(0.45), boxTone: muted(0.25) },
+        { title: 'Follow up with Marietta Gear',      due: 'Aug 26',  dueBg: 'transparent',         dueFg: muted(0.45), boxTone: muted(0.25) },
+        { title: 'Chase signed waiver',               due: 'Sep 2',   dueBg: 'transparent',         dueFg: muted(0.45), boxTone: muted(0.25) },
+      ],
+      activity: [
+        { subject: 'Spoke with plant manager',  company: 'Piedmont Tool & Die',      when: 'Yesterday', dot: '#3b82f6' },
+        { subject: 'Sent sponsorship deck',     company: 'Chattahoochee Composites', when: '2d ago',    dot: teal },
+        { subject: 'Tour walkthrough',          company: 'Northside Fabrication',    when: '4d ago',    dot: amber },
+        { subject: 'Prefers contact after 3pm', company: 'Marietta Gear',            when: '5d ago',    dot: muted(0.25) },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

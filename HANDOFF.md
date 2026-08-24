@@ -114,7 +114,35 @@ Members, Guide.
   go in `lib/` — that's why `lib/views.ts` exists.
 - `companies.area` is a computed region, assigned by nearest anchor from the
   coordinates. The anchor list in `ez_area()` is **specific to one US state** —
-  replace it for your own geography.
+  replace it for your own geography. Anything that moves a company's point must
+  recompute it, which is why `set_company_point()` exists.
+
+- **Geocoding is two-tier.** Cities come from Nominatim via
+  `scripts/geocode_cities.py` (a one-off, run by hand). Street addresses come
+  from the **US Census Bureau batch geocoder** via the `geocode` Edge Function,
+  triggered from Import / Export by an admin. Census was chosen because it needs
+  no API key, has no billing to forget, takes 10,000 addresses per batch, and is
+  the authoritative source for US street geometry.
+
+  **It cannot run from Postgres.** The `http` extension is installed and reaches
+  most hosts fine, but TLS to `geocoding.geo.census.gov` fails with
+  `SSL_ERROR_SYSCALL` from Supabase's libcurl while succeeding from Deno and
+  curl. Don't spend an afternoon rediscovering that — the HTTP call belongs in
+  the Edge Function.
+
+  The Edge Function is also **the only place a service-role key is used**, which
+  is what keeps "no service-role key in the app" true. It authorises the *caller*
+  as an admin via their own JWT before touching anything.
+
+  **Never write a geocode result without validating it.** A wrong answer arrives
+  looking exactly like a right one. The function requires a `Match`, a point
+  inside the Georgia bounding box, AND a point within 40km of the town centre
+  already on file — that last check is the one that catches a confident match in
+  the wrong town.
+
+- **Roughly 45% of companies can never be pinned precisely**, because their
+  `address` is a placeholder like `"Atlanta, GA (verify address)"`. That is a
+  source-data gap, not a geocoder problem, and no service can fix it.
 - The map swaps layers at zoom 9: region bubbles below, individual companies
   above. **Clustering stays on at every zoom, deliberately.** Every company is
   geocoded to its town centre — `geo_precision` is `'city'` for all of them — so

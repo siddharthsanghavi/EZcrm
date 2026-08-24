@@ -1,6 +1,13 @@
 import { CsvImport } from '@/components/csv-import';
+import { GeocodePanel } from '@/components/geocode-panel';
+import { geocodePending } from '@/app/geocode-actions';
+import { currentProfile } from '@/lib/supabase';
 
-export default function ImportPage() {
+export const dynamic = 'force-dynamic';
+
+export default async function ImportPage() {
+  const [profile, pending] = await Promise.all([currentProfile(), geocodePending()]);
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
@@ -29,6 +36,11 @@ export default function ImportPage() {
           </a>
         </div>
       </section>
+
+      {/* Admin-only: it rewrites coordinates on shared records. The Edge
+          Function re-checks this; the guard here just avoids showing a button
+          that would refuse. */}
+      {profile?.role === 'admin' && <GeocodePanel pending={pending} />}
     </div>
   );
 }

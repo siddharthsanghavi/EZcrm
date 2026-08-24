@@ -16,6 +16,15 @@ export type Change = {
 
 export const CHANGELOG: Change[] = [
   {
+    date: '2026-08-23',
+    title: 'Pins move to the actual building',
+    notes: [
+      'Company pins used to sit on the centre of their town — often several kilometres from the real address.',
+      'Admins can now press one button on Import / Export to look up street addresses and move the pins. It is free, and it refuses any result that lands somewhere implausible.',
+      'City names that were spelled two ways (Atlanta / Atlanta (Fulton)) are merged, so the filters no longer split them.',
+    ],
+  },
+  {
     date: '2026-08-22',
     title: 'The guide explains itself now',
     notes: [

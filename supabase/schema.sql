@@ -692,6 +692,29 @@ $$;
 
 grant execute on function record_login_event(text, text, text, text, text) to anon, authenticated;
 
+-- ------------------------------------------------------- street geocoding
+-- Keeps "set the coordinates" and "recompute the area" from coming apart.
+-- Called only by the `geocode` Edge Function, which validates the point first.
+-- See supabase/migrations/011_set_company_point.sql.
+
+create or replace function set_company_point(p_id uuid, p_lat double precision, p_lon double precision)
+returns void
+language plpgsql
+security definer set search_path = public, pg_temp
+as $$
+begin
+  update companies
+     set latitude      = p_lat,
+         longitude     = p_lon,
+         geo_precision = 'address',
+         area          = ez_area(p_lat, p_lon)
+   where id = p_id;
+end;
+$$;
+
+revoke execute on function set_company_point(uuid, double precision, double precision)
+  from anon, authenticated, public;
+
 -- ---------------------------------------------------------------- bootstrap
 -- Replace with your own address, run it, then sign in once to create your user.
 -- After that, promote yourself:

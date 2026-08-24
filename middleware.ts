@@ -1,7 +1,9 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
-const PUBLIC = ['/login', '/auth', '/no-access'];
+// /privacy and /terms must stay public: Google's OAuth reviewer fetches them,
+// and a policy behind a login is worth nothing to the person it is written for.
+const PUBLIC = ['/login', '/auth', '/no-access', '/privacy', '/terms'];
 
 export async function middleware(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

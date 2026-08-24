@@ -304,10 +304,18 @@ function GoogleMark() {
 
 export default function LoginPage() {
   return (
-    <main className="flex min-h-screen items-center justify-center px-6">
+    <main className="flex min-h-screen flex-col items-center justify-center gap-4 px-6">
       <Suspense fallback={<div className="card w-full max-w-sm p-8 text-sm">Loading…</div>}>
         <LoginForm />
       </Suspense>
+
+      {/* Plain links, not a nav: Google's consent-screen review expects the
+          policy to be reachable from the page it is claimed on. */}
+      <p className="text-xs text-black/40">
+        <a href="/privacy" className="hover:text-ink hover:underline">Privacy</a>
+        {' · '}
+        <a href="/terms" className="hover:text-ink hover:underline">Terms</a>
+      </p>
     </main>
   );
 }

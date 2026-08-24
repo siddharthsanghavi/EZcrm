@@ -223,34 +223,42 @@ Everything is free. There is nothing metered and no card required.
 ### 1. Create the OAuth client
 
 [console.cloud.google.com](https://console.cloud.google.com) → create a project
-(any name).
+(any name will do).
 
-**APIs &amp; Services → OAuth consent screen:**
+> **The menu moved.** Guides that tell you to open
+> **APIs &amp; Services → OAuth consent screen** are out of date — that item no
+> longer exists. It is now **Google Auth Platform**, split into *Branding*,
+> *Audience*, *Clients* and *Data Access*. Easiest route: type
+> &ldquo;Google Auth Platform&rdquo; into the console search bar.
 
-- User type **External**
-- Fill in app name, your email for both support and developer contact
-- Scopes: leave the defaults (`email`, `profile`, `openid`). **Do not add
-  others** — these are non-sensitive, which is what keeps you out of Google's
-  app-verification review entirely.
-- **Publishing status: click "Publish app".** If you leave it in *Testing*, only
-  100 named test users can sign in **and everyone is signed out every 7 days**
-  when the refresh token expires. Publishing with only these scopes needs no
-  review.
+**Google Auth Platform → Get started** (first visit only):
 
-**APIs &amp; Services → Credentials → Create credentials → OAuth client ID:**
+- App name: anything the club will recognise, e.g. `EZcrm`
+- User support email: yours
+- Audience: **External**
+- Contact email: yours, then agree and create
 
-- Type **Web application**
-- **Authorised redirect URI** — exactly one, and it is Supabase's, not yours:
+**Audience tab → Publish app.** This matters more than it looks. Left as
+*Testing*, only named test users can sign in **and everyone is signed out every
+7 days** when the refresh token expires. Publishing needs no review here,
+because sign-in only uses non-sensitive scopes (`openid`, `email`, `profile`).
+
+**Clients tab → Create client:**
+
+- Application type: **Web application**
+- Name: anything, e.g. `EZcrm web`
+- **Authorised redirect URIs → Add URI**, and paste your Supabase callback:
 
   ```
   https://YOUR-PROJECT-REF.supabase.co/auth/v1/callback
   ```
 
-  Get the ref from Supabase → Project Settings → General. This is the step
-  people get wrong: it is tempting to put your own app's URL here. Google talks
-  to Supabase, and Supabase then redirects to you.
+  The ref is in Supabase → Project Settings → General. **This is the step people
+  get wrong:** it is Supabase's URL, not your app's. Google hands the user to
+  Supabase, and Supabase then redirects to EZcrm. Putting the Vercel URL here
+  produces a `redirect_uri_mismatch` error at sign-in.
 
-Copy the **Client ID** and **Client secret**.
+Create it, then copy the **Client ID** and **Client secret**.
 
 ### 2. Switch it on in Supabase
 

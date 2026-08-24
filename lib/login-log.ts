@@ -5,7 +5,7 @@ import { headers } from 'next/headers';
 import { serverClient } from '@/lib/supabase';
 
 export type LoginEvent = 'signed_in' | 'denied' | 'failed' | 'signed_out';
-export type LoginMethod = 'pkce' | 'token_hash' | 'implicit' | 'unknown';
+export type LoginMethod = 'pkce' | 'token_hash' | 'implicit' | 'oauth' | 'unknown';
 
 /**
  * Records how a sign-in went.

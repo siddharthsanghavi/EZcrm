@@ -206,6 +206,70 @@ Keeping the localhost entry means you can still develop locally.
 
 ---
 
+## Part F — Google sign-in (optional, but strongly recommended)
+
+Magic links are limited to a **handful of emails per hour for the whole
+project**, shared by everyone, and the link only works in the browser that asked
+for it. Google sign-in has neither problem: no email is sent, so there is no
+quota, and there is no link to open in the wrong place.
+
+**This does not widen access.** Anyone can press the Google button, but
+`handle_new_user` still only creates a profile for an address in
+`allowed_emails`. A stranger who signs in with Google lands on the same
+&ldquo;no access&rdquo; page as before.
+
+Everything is free. There is nothing metered and no card required.
+
+### 1. Create the OAuth client
+
+[console.cloud.google.com](https://console.cloud.google.com) → create a project
+(any name).
+
+**APIs &amp; Services → OAuth consent screen:**
+
+- User type **External**
+- Fill in app name, your email for both support and developer contact
+- Scopes: leave the defaults (`email`, `profile`, `openid`). **Do not add
+  others** — these are non-sensitive, which is what keeps you out of Google's
+  app-verification review entirely.
+- **Publishing status: click "Publish app".** If you leave it in *Testing*, only
+  100 named test users can sign in **and everyone is signed out every 7 days**
+  when the refresh token expires. Publishing with only these scopes needs no
+  review.
+
+**APIs &amp; Services → Credentials → Create credentials → OAuth client ID:**
+
+- Type **Web application**
+- **Authorised redirect URI** — exactly one, and it is Supabase's, not yours:
+
+  ```
+  https://YOUR-PROJECT-REF.supabase.co/auth/v1/callback
+  ```
+
+  Get the ref from Supabase → Project Settings → General. This is the step
+  people get wrong: it is tempting to put your own app's URL here. Google talks
+  to Supabase, and Supabase then redirects to you.
+
+Copy the **Client ID** and **Client secret**.
+
+### 2. Switch it on in Supabase
+
+Supabase → **Authentication** → **Providers** → **Google** → enable, paste the
+client ID and secret, save.
+
+### 3. Check it
+
+Open the app, press **Continue with Google**, sign in with an address that is on
+the allowlist. You should land on the dashboard without an email being sent.
+Then check **Members** — the sign-in shows with method **Google**, so you can
+see the two paths separately.
+
+If the button reports that the provider isn't enabled, step 2 hasn't taken
+effect yet. The email link keeps working throughout, so nobody is locked out
+while you set this up.
+
+---
+
 ## Importing the company directory
 
 `schema.sql` creates empty tables — no company data is committed to this repo.

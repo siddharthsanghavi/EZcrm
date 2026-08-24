@@ -13,6 +13,7 @@ export type LoginRow = {
 };
 
 const METHOD_LABEL: Record<string, string> = {
+  oauth: 'Google',
   pkce: 'link in same browser',
   token_hash: 'link anywhere',
   implicit: 'token in URL',

@@ -77,6 +77,24 @@ Members, Guide.
   The map has no dark tiles — the tile pane is CSS-inverted, which is why the
   filter is scoped to `.leaflet-tile-pane` and not the whole map.
 
+- **Google sign-in is offered only when it actually works.** `signInWithOAuth`
+  does NOT return an error for a disabled provider — it navigates the browser to
+  Supabase, which serves a raw JSON 400 on the `supabase.co` domain, stranding
+  the visitor with no client-side handler able to catch it. So
+  `app/auth-providers.ts` probes `/auth/v1/authorize?provider=google` from the
+  server (a 3xx means enabled, 400 means not) and the button is only rendered on
+  a positive answer. The probe revalidates every 5 minutes, so enabling the
+  provider in the dashboard makes the button appear **without a redeploy**.
+  Setup steps are in SETUP.md Part F.
+
+  **Google does not widen access.** `handle_new_user` still only creates a
+  profile for an address in `allowed_emails`; a stranger signing in with Google
+  lands on `/no-access` exactly as before. Verified before shipping.
+
+  Keep the magic link as a fallback. It is the only path that works if OAuth is
+  ever misconfigured, and removing it would make a bad Google config a total
+  lockout — including for the admin who needs to fix it.
+
 - **Sign-in emails are capped project-wide, not per user.** Supabase's docs are
   explicit: the limit is a "sum of combined requests project-wide" and is
   customisable "Custom SMTP Only". So two members signing in can lock out a

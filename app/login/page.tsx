@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { browserClient } from '@/lib/supabase-browser';
 import { claimSignInEmail, settleSignInEmail, signInQuota, type Quota } from '@/app/auth-quota';
 import { logImplicitFailure, logImplicitSignIn } from '@/app/auth-events';
+import { isGoogleEnabled } from '@/app/auth-providers';
 
 /** "in 23 minutes" / "shortly" — a wait a person can act on. */
 function waitLabel(retryAfter: string | null): string {
@@ -22,6 +23,8 @@ function LoginForm() {
   const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [message, setMessage] = useState('');
   const [quota, setQuota] = useState<Quota | null>(null);
+  // Null while unknown, so the button never flashes in and out.
+  const [googleReady, setGoogleReady] = useState<boolean | null>(null);
 
   // Show whatever the callback couldn't finish — in words a club member can act
   // on. Supabase's own messages are written for developers ("PKCE code verifier
@@ -84,6 +87,11 @@ function LoginForm() {
     signInQuota().then(setQuota);
   }, []);
 
+  // Only offer Google once the provider really answers — see auth-providers.ts.
+  useEffect(() => {
+    isGoogleEnabled().then(setGoogleReady);
+  }, []);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setState('sending');
@@ -132,10 +140,66 @@ function LoginForm() {
     }
   }
 
+  /**
+   * Google sign-in. Sends no email, so it is not subject to the club's shared
+   * hourly allowance, and it has no link to open in the wrong browser — the two
+   * things that actually stop people getting in.
+   *
+   * Access is still governed by the allowlist: signing in with Google creates
+   * an auth user, but `handle_new_user` only mints a profile for an address in
+   * `allowed_emails`. A stranger who signs in lands on /no-access exactly as
+   * before, so this widens the front door without widening access.
+   */
+  async function google() {
+    setState('sending');
+    setMessage('');
+
+    const next = params.get('next');
+    const redirect = new URL('/auth/callback', window.location.origin);
+    redirect.searchParams.set('via', 'google');
+    if (next) redirect.searchParams.set('next', next);
+
+    const { error } = await browserClient().auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: redirect.toString() },
+    });
+
+    // On success the browser is already navigating to Google; only a failure
+    // returns here.
+    if (error) {
+      setState('error');
+      setMessage(
+        error.message.toLowerCase().includes('provider')
+          ? 'Google sign-in isn’t switched on for this project yet. Use the email link below.'
+          : error.message,
+      );
+    }
+  }
+
   return (
     <div className="card w-full max-w-sm p-8">
       <h1 className="text-xl font-semibold">EZcrm</h1>
       <p className="mt-1 text-sm text-black/55">Club outreach tracker</p>
+
+      {state !== 'sent' && googleReady && (
+        <div className="mt-6">
+          <button
+            type="button"
+            onClick={google}
+            disabled={state === 'sending'}
+            className="btn-ghost w-full gap-2.5"
+          >
+            <GoogleMark />
+            Continue with Google
+          </button>
+
+          <div className="my-4 flex items-center gap-3">
+            <span className="h-px flex-1 bg-black/10" />
+            <span className="text-[11px] uppercase tracking-wide text-black/35">or</span>
+            <span className="h-px flex-1 bg-black/10" />
+          </div>
+        </div>
+      )}
 
       {state === 'sent' ? (
         <div className="mt-6 space-y-3">
@@ -204,6 +268,37 @@ function LoginForm() {
         </form>
       )}
     </div>
+  );
+}
+
+/**
+ * Google's own four-colour mark, at its fixed colours.
+ *
+ * Deliberately NOT themed: Google's branding guidelines require the mark to
+ * keep its own colours, so this is one of the few places in the app that must
+ * not follow the palette. (`text-white` here would resolve to the dark surface
+ * in dark mode anyway — see tailwind.config.ts.)
+ */
+function GoogleMark() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 18 18" aria-hidden focusable="false">
+      <path
+        fill="#4285F4"
+        d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"
+      />
+      <path
+        fill="#34A853"
+        d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z"
+      />
+      <path
+        fill="#EA4335"
+        d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"
+      />
+    </svg>
   );
 }
 

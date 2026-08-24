@@ -615,7 +615,7 @@ create table if not exists login_events (
   event      text not null check (event in ('signed_in', 'denied', 'failed', 'signed_out')),
   -- Which flow was used, so you can tell whether moving the email template to
   -- /auth/confirm actually reduced the failures.
-  method     text check (method in ('pkce', 'token_hash', 'implicit', 'unknown')),
+  method     text check (method in ('pkce', 'token_hash', 'implicit', 'oauth', 'unknown')),
   reason     text,
   ip_hash    text,
   created_at timestamptz not null default now()

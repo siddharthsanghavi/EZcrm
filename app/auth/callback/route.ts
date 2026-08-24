@@ -15,9 +15,14 @@ export async function GET(request: NextRequest) {
   // Supabase reports its own failures (expired link, redirect URL not on the
   // allowlist) as query params rather than an HTTP error. Surface them instead
   // of treating this like a missing code.
+  // OAuth and magic links both come back as ?code=, so the login tracker can't
+  // tell them apart without this marker. Mixing them would make the failure
+  // breakdown on /members meaningless.
+  const via = searchParams.get('via') === 'google' ? 'oauth' : 'pkce';
+
   const supabaseError = searchParams.get('error_description') ?? searchParams.get('error');
   if (supabaseError) {
-    await recordLogin('failed', 'pkce', { reason: supabaseError });
+    await recordLogin('failed', via, { reason: supabaseError });
     return fail(origin, supabaseError);
   }
 
@@ -36,11 +41,11 @@ export async function GET(request: NextRequest) {
   if (error) {
     // Most often the PKCE verifier cookie is absent because the link was opened
     // in a different browser or device than the one that requested it.
-    await recordLogin('failed', 'pkce', { reason: error.message });
+    await recordLogin('failed', via, { reason: error.message });
     return fail(origin, error.message);
   }
 
-  await recordSignIn('pkce');
+  await recordSignIn(via);
 
   // Only redirect within this app, so a crafted link can't bounce a
   // freshly authenticated user to someone else's site.

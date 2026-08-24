@@ -116,7 +116,15 @@ Members, Guide.
   coordinates. The anchor list in `ez_area()` is **specific to one US state** —
   replace it for your own geography.
 - The map swaps layers at zoom 9: region bubbles below, individual companies
-  above, declustering fully at 13.
+  above. **Clustering stays on at every zoom, deliberately.** Every company is
+  geocoded to its town centre — `geo_precision` is `'city'` for all of them — so
+  1,248 companies sit on ~224 distinct points, 87 of them on Atlanta's single
+  coordinate. `disableClusteringAtZoom: 13` used to be set, and because the
+  library computes `_maxZoom = disableClusteringAtZoom - 1`, clustering stopped
+  at zoom 12; above that all 87 Atlanta markers drew on one pixel with no
+  cluster to click, so `spiderfyOnMaxZoom` never fired and 86 of them were
+  unreachable. Don't re-add it unless the data gains real street-level
+  coordinates.
 - `/guide` renders `lib/changelog.ts`. **Add an entry there in the same commit
   as any user-visible change**, or the guide silently goes stale.
 

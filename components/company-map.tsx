@@ -153,8 +153,20 @@ export function CompanyMap({ companies }: { companies: MapCompany[] }) {
 
     // ---- individual companies (higher zoom) --------------------------------
     const companyLayer = L.markerClusterGroup({
-      disableClusteringAtZoom: 13,
+      // NO disableClusteringAtZoom. It used to be 13, which was actively
+      // hiding companies: the library sets `_maxZoom = disableClusteringAtZoom
+      // - 1`, so clustering stopped at zoom 12 and every marker above that was
+      // placed individually. Every company here is geocoded to its town centre
+      // (`geo_precision` is 'city' for all of them), so 1,248 companies sit on
+      // just 224 distinct points — 87 of them on Atlanta's. Unclustered, those
+      // 87 markers drew on the same pixel and only the last one was clickable.
+      //
+      // Keeping clustering on at every zoom means that stack stays a cluster
+      // you can click, and spiderfyOnMaxZoom fans it out. maxClusterRadius is
+      // small enough that genuinely separate places still decluster normally.
       spiderfyOnMaxZoom: true,
+      // 87 markers in one spiral needs more room than the default.
+      spiderfyDistanceMultiplier: 1.6,
       showCoverageOnHover: false,
       maxClusterRadius: 28,
       chunkedLoading: true,

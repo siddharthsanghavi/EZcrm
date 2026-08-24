@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { STATUS_LABELS, STATUSES, displayName, type Profile } from '@/lib/types';
+import { STATUS_LABELS, STATUSES, TIERS, displayName, type Profile } from '@/lib/types';
 
 /**
  * Sticky bar for acting on checked companies.
@@ -84,6 +84,22 @@ export function BulkBar({
         </select>
         <button name="op" value="status" className="btn-ghost py-1.5">
           Set status
+        </button>
+
+        <span className="mx-1 h-5 w-px bg-black/10" />
+
+        {/* Re-tiering in bulk is the point: triage happens to a batch of
+            companies at once, not one at a time. */}
+        <select name="tier" defaultValue="Tier 2" aria-label="Set tier" className="field w-32 py-1.5">
+          <option value="">Unrated</option>
+          {TIERS.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+        <button name="op" value="tier" className="btn-ghost py-1.5">
+          Set tier
         </button>
       </div>
     </div>

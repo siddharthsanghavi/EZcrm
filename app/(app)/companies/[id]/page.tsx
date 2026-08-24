@@ -15,6 +15,7 @@ import {
 } from '@/lib/types';
 import { CompanyForm } from '@/components/company-form';
 import { OwnerPicker } from '@/components/owner-picker';
+import { TierPicker } from '@/components/tier-picker';
 import { ActivityComposer } from '@/components/activity-composer';
 import { ContactForm } from '@/components/contact-form';
 import { QuickTaskForm } from '@/components/quick-task-form';
@@ -155,6 +156,7 @@ export default async function CompanyPage({
               <button className="btn-ghost py-1.5">Update</button>
             </form>
             <OwnerPicker companyId={id} ownerId={c.owner_id} members={members ?? []} />
+            <TierPicker companyId={id} tier={c.tier} />
             <Link href={`/companies/${id}?edit=1`} className="btn-ghost py-1.5">
               Edit
             </Link>

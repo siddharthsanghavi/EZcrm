@@ -16,6 +16,17 @@ export type Change = {
 
 export const CHANGELOG: Change[] = [
   {
+    date: '2026-08-24',
+    title: 'Sign in with Google, and editable tiers',
+    notes: [
+      'There is now a “Continue with Google” button on the sign-in page. It sends no email, so the club’s shared hourly limit no longer applies — and there is no link to open in the wrong browser, which was the main reason sign-ins failed.',
+      'The email link still works exactly as before if you prefer it, or if Google is ever having a bad day.',
+      'Signing in with Google does not grant access on its own. An admin still has to add you to the members list first.',
+      'Tier is now editable straight from a company’s page, next to status and owner, instead of only inside Edit. “Unrated” is a proper option for companies nobody has assessed yet.',
+      'You can re-tier many companies at once: tick them in the list and use Set tier in the bar at the bottom.',
+    ],
+  },
+  {
     date: '2026-08-23',
     title: 'Pins move to the actual building',
     notes: [

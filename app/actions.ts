@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { currentProfile, serverClient } from '@/lib/supabase';
-import { ACTIVITY_TYPES, INTERESTS, STATUSES } from '@/lib/types';
+import { ACTIVITY_TYPES, INTERESTS, STATUSES, TIERS } from '@/lib/types';
 import { normalizeViewQuery } from '@/lib/views';
 
 /**
@@ -83,6 +83,31 @@ export async function setCompanyStatus(formData: FormData) {
 
   revalidatePath('/companies');
   revalidatePath(`/companies/${id}`);
+}
+
+/**
+ * Set (or clear) a company's tier.
+ *
+ * Tier is the club's own judgement of how promising a company is, and it
+ * changes as you learn things — so it belongs next to status and owner rather
+ * than buried in the edit form. An empty value clears it back to unrated, which
+ * is a real state: a newly added company nobody has assessed yet.
+ *
+ * `tier_rank` is a generated column, so list ordering follows automatically.
+ */
+export async function setCompanyTier(formData: FormData) {
+  const { supabase } = await requireMember();
+  const id = text(formData.get('id'));
+  if (!id) return;
+
+  const raw = text(formData.get('tier'));
+  const tier = raw && TIERS.includes(raw as never) ? raw : null;
+
+  await supabase.from('companies').update({ tier }).eq('id', id);
+
+  revalidatePath(`/companies/${id}`);
+  revalidatePath('/companies');
+  revalidatePath('/map');
 }
 
 /** Assign (or unassign) a club member as the owner of a company. */
@@ -254,7 +279,10 @@ const ids = (formData: FormData) =>
  * one dropdown at a time is not a real workflow.
  */
 export async function bulkApply(formData: FormData) {
-  return formData.get('op') === 'status' ? bulkStatus(formData) : bulkAssign(formData);
+  const op = formData.get('op');
+  if (op === 'status') return bulkStatus(formData);
+  if (op === 'tier') return bulkTier(formData);
+  return bulkAssign(formData);
 }
 
 export async function bulkAssign(formData: FormData) {
@@ -267,6 +295,21 @@ export async function bulkAssign(formData: FormData) {
 
   revalidatePath('/companies');
   revalidatePath('/pipeline');
+  revalidatePath('/map');
+}
+
+/** Re-tier many companies at once — triage is the job this exists for. */
+export async function bulkTier(formData: FormData) {
+  const { supabase } = await requireMember();
+  const list = ids(formData);
+  if (list.length === 0) return;
+
+  const raw = text(formData.get('tier'));
+  const tier = raw && TIERS.includes(raw as never) ? raw : null;
+
+  await supabase.from('companies').update({ tier }).in('id', list);
+
+  revalidatePath('/companies');
   revalidatePath('/map');
 }
 

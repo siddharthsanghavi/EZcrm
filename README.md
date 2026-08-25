@@ -9,6 +9,11 @@ than in application code.
 > **Picking this up cold?** Read [HANDOFF.md](HANDOFF.md) first — it records
 > current state, the outstanding blockers, and the traps that have already cost
 > time. [SETUP.md](SETUP.md) covers installing from scratch.
+>
+> **Want one of these for your own group?** Start with
+> [MAKE-IT-YOURS.md](MAKE-IT-YOURS.md). It lists exactly what is stitched to this
+> club, this state, and this kind of company — and what to change so it stops
+> being someone else's app.
 
 ## Stack
 

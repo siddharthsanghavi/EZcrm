@@ -25,3 +25,8 @@ DEPLOYMENT.local.md
 # .dc.html sources next to it. The sources are the thing worth keeping.
 design/*.html
 !design/*.dc.html
+
+# Claude Code's own working files: local tool settings and a per-machine
+# instructions file. Nothing here is part of the app.
+.claude/
+CLAUDE.md

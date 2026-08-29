@@ -1,8 +1,8 @@
 /**
  * viewer reads everything and writes nothing; member reads and writes; admin
  * also manages people and is the only role that can delete a company.
- * Enforced by RLS — see supabase/migrations/015_viewer_role.sql — so the UI
- * gating below is a courtesy, not the security boundary.
+ * Enforced by RLS — see supabase/migrations/013_deletions_audit_and_roles.sql —
+ * so the UI gating below is a courtesy, not the security boundary.
  */
 export type Role = 'viewer' | 'member' | 'admin';
 
@@ -156,7 +156,15 @@ export type Task = {
   assignee_id: string | null;
 };
 
-export const AUDIT_ENTITIES = ['company', 'contact', 'task', 'activity', 'deletion_request'] as const;
+export const AUDIT_ENTITIES = [
+  'company',
+  'contact',
+  'task',
+  'activity',
+  'deletion_request',
+  'member',
+  'data',
+] as const;
 export type AuditEntity = (typeof AUDIT_ENTITIES)[number];
 
 export const AUDIT_ENTITY_LABELS: Record<AuditEntity, string> = {
@@ -165,6 +173,8 @@ export const AUDIT_ENTITY_LABELS: Record<AuditEntity, string> = {
   task: 'Tasks',
   activity: 'Outreach',
   deletion_request: 'Deletions',
+  member: 'Members',
+  data: 'Import / export',
 };
 
 export type AuditAction =
@@ -178,11 +188,18 @@ export type AuditAction =
   | 'reopened'
   | 'requested'
   | 'declined'
-  | 'withdrawn';
+  | 'withdrawn'
+  | 'invited'
+  | 'removed'
+  | 'role_changed'
+  | 'renamed'
+  | 'imported'
+  | 'exported';
 
 /**
- * One thing somebody did. Written by trigger — see 014_audit_events.sql — so
- * the feed covers writes made outside the UI too.
+ * One thing somebody did. Mostly written by trigger (013), so the feed covers
+ * writes made outside the UI too; imports and exports are logged by the app
+ * (014), because an export is a read and no trigger can see one.
  */
 export type AuditEvent = {
   id: string;
@@ -213,6 +230,14 @@ export const AUDIT_ACTION_STYLES: Record<AuditAction, string> = {
   requested: 'bg-amber-100 text-amber-800 dark:bg-amber-400/15 dark:text-amber-300',
   declined: 'bg-black/[0.05] text-black/55',
   withdrawn: 'bg-black/[0.05] text-black/55',
+  // Membership and bulk data movement are the two things worth being able to
+  // find months later, so neither is left in the neutral grey.
+  invited: 'bg-blue-100 text-blue-800 dark:bg-blue-400/15 dark:text-blue-300',
+  removed: 'bg-rose-100 text-rose-800 dark:bg-rose-400/15 dark:text-rose-300',
+  role_changed: 'bg-violet-100 text-violet-800 dark:bg-violet-400/15 dark:text-violet-300',
+  renamed: 'bg-black/[0.05] text-black/55',
+  imported: 'bg-amber-100 text-amber-800 dark:bg-amber-400/15 dark:text-amber-300',
+  exported: 'bg-amber-100 text-amber-800 dark:bg-amber-400/15 dark:text-amber-300',
 };
 
 export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
@@ -227,6 +252,12 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   requested: 'requested',
   declined: 'declined',
   withdrawn: 'withdrawn',
+  invited: 'invited',
+  removed: 'removed',
+  role_changed: 'role',
+  renamed: 'renamed',
+  imported: 'imported',
+  exported: 'exported',
 };
 
 /** Who did it. Null actor means no session — the geocoder, or SQL run by hand. */

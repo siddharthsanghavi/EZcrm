@@ -35,7 +35,7 @@ export default async function Dashboard() {
       .order('due_date', { ascending: true, nullsFirst: false })
       .limit(8),
     // Not just logged outreach any more: everything anyone did. See
-    // supabase/migrations/014_audit_events.sql.
+    // supabase/migrations/013_deletions_audit_and_roles.sql.
     loadFeed({ limit: 8 }),
   ]);
 

@@ -26,6 +26,18 @@ export async function GET(request: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
+  // Logged here rather than by a trigger, because an export is a SELECT and
+  // there is nothing for a trigger to fire on. Taking a copy of the club's
+  // whole contact list out of the building is exactly the act you want to be
+  // able to point at later, so a failure to log it must not pass silently --
+  // but it must not fail the download either, hence the awaited catch.
+  const { error: logError } = await supabase.rpc('log_data_transfer', {
+    p_action: 'exported',
+    p_table: table,
+    p_rows: data?.length ?? 0,
+  });
+  if (logError) console.error('Could not log export:', logError.message);
+
   // Flatten the joined company object into a plain `company` column, and guard
   // against CSV injection — a cell starting with = or + executes in Excel.
   const rows = (data ?? []) as unknown as Record<string, unknown>[];

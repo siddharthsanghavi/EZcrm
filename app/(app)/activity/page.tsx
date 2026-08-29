@@ -19,7 +19,11 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
   const { entity } = await searchParams;
   const filter = AUDIT_ENTITIES.includes(entity as AuditEntity) ? entity : undefined;
 
-  const events = await loadFeed({ entity: filter, limit: 200 });
+  // Collapsing runs happens below, after the query, so a big CSV import can
+  // still consume the whole window even though it renders as one line. 500 is
+  // enough that a 400-row import does not push the rest of the week off the
+  // page, and small enough to stay one cheap indexed read.
+  const events = await loadFeed({ entity: filter, limit: 500 });
 
   // Group into days, keeping the newest-first order the query already gives.
   const days: { label: string; rows: typeof events }[] = [];
@@ -35,8 +39,8 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Activity</h1>
         <p className="mt-1 text-sm text-black/55">
-          Every change anyone has made — companies, contacts, tasks, outreach and deletions.
-          Sign-ins are not here; they live under{' '}
+          Every change anyone has made — companies, contacts, tasks, outreach, deletions,
+          membership, and imports and exports. Sign-ins are not here; they live under{' '}
           <Link href="/members" className="underline">
             Members
           </Link>

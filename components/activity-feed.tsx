@@ -26,6 +26,54 @@ function when(iso: string, timeOnly: boolean) {
 }
 
 /**
+ * Collapse a run of identical actions by one person into a single line.
+ *
+ * A 1,200-row CSV import produces 1,200 "Added X" events, which is correct in
+ * the table and useless in a feed — it buries everything else for days. Runs of
+ * the same actor doing the same thing to the same kind of record, within an
+ * hour, become "Added 1,200 companies", and the individual rows stay in the
+ * database for anyone who needs them.
+ */
+function collapse(events: FeedRow[]): (FeedRow & { runLength: number })[] {
+  const out: (FeedRow & { runLength: number })[] = [];
+
+  for (const e of events) {
+    const last = out[out.length - 1];
+    const sameKind =
+      last &&
+      last.actor === e.actor &&
+      last.action === e.action &&
+      last.entity === e.entity &&
+      Math.abs(new Date(last.at).getTime() - new Date(e.at).getTime()) < 3600_000;
+
+    // Two is not a run worth hiding, and collapsing it would cost the reader
+    // the detail for no gain in density.
+    if (sameKind && (last.runLength > 1 || summaryVerb(last) === summaryVerb(e))) {
+      last.runLength += 1;
+    } else {
+      out.push({ ...e, runLength: 1 });
+    }
+  }
+
+  return out;
+}
+
+/** The leading word of a summary — "Added", "Edited" — used to spot a run. */
+function summaryVerb(e: FeedRow) {
+  return e.summary.split(' ')[0];
+}
+
+const PLURAL: Record<string, string> = {
+  company: 'companies',
+  contact: 'contacts',
+  task: 'tasks',
+  activity: 'log entries',
+  deletion_request: 'deletion requests',
+  member: 'members',
+  data: 'transfers',
+};
+
+/**
  * One line per thing that happened.
  *
  * The summary sentence is written by the database trigger rather than composed
@@ -60,11 +108,13 @@ export function ActivityFeed({
 
   return (
     <ul className="divide-y divide-black/5">
-      {events.map((e) => {
+      {collapse(events).map((e) => {
         const action = e.action as AuditAction;
         const company = e.companies;
-        const summary =
-          omitName && e.summary.startsWith(`${omitName}: `)
+        const collapsed = e.runLength > 1;
+        const summary = collapsed
+          ? `${summaryVerb(e)} ${e.runLength} ${PLURAL[e.entity] ?? e.entity}`
+          : omitName && e.summary.startsWith(`${omitName}: `)
             ? e.summary.slice(omitName.length + 2)
             : e.summary;
 
@@ -82,7 +132,9 @@ export function ActivityFeed({
 
             <div className="mt-0.5 text-xs text-black/40">
               {actorName(e.profiles)}
-              {showCompany && company && e.company_id && (
+              {/* A collapsed run spans several companies, so naming one of them
+                  would be actively misleading. */}
+              {!collapsed && showCompany && company && e.company_id && (
                 <>
                   {' · '}
                   <Link href={`/companies/${e.company_id}`} className="hover:text-ink">

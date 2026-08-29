@@ -36,6 +36,25 @@ async function insertChunked(
   return created;
 }
 
+/**
+ * One line in the feed for the whole import, alongside the per-row events the
+ * triggers write. Both matter: the rows say what arrived, this says it was one
+ * deliberate act by one person rather than an afternoon of typing.
+ */
+async function logImport(
+  supabase: Awaited<ReturnType<typeof serverClient>>,
+  table: string,
+  rows: number,
+) {
+  if (rows === 0) return;
+  const { error } = await supabase.rpc('log_data_transfer', {
+    p_action: 'imported',
+    p_table: table,
+    p_rows: rows,
+  });
+  if (error) console.error('Could not log import:', error.message);
+}
+
 export async function POST(request: Request) {
   const profile = await currentProfile();
   if (!profile) return NextResponse.json({ error: 'Not authorised.' }, { status: 403 });
@@ -110,6 +129,7 @@ export async function POST(request: Request) {
     const created = await insertChunked(supabase, 'companies', fresh);
     if (typeof created === 'string') return NextResponse.json({ error: created }, { status: 400 });
 
+    await logImport(supabase, 'companies', created);
     return NextResponse.json({ created, skipped, errors });
   }
 
@@ -149,5 +169,6 @@ export async function POST(request: Request) {
   const created = await insertChunked(supabase, 'contacts', payload);
   if (typeof created === 'string') return NextResponse.json({ error: created }, { status: 400 });
 
+  await logImport(supabase, 'contacts', created);
   return NextResponse.json({ created, skipped, errors });
 }

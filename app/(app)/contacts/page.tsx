@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { serverClient } from '@/lib/supabase';
+import { currentProfile, serverClient } from '@/lib/supabase';
+import { canWrite } from '@/lib/types';
 import { deleteContact } from '@/app/actions';
 import { ContactForm } from '@/components/contact-form';
 
@@ -12,6 +13,7 @@ export default async function ContactsPage({
 }) {
   const { q } = await searchParams;
   const supabase = await serverClient();
+  const writable = canWrite(await currentProfile());
 
   let query = supabase
     .from('contacts')
@@ -64,10 +66,12 @@ export default async function ContactsPage({
                         </div>
                       </div>
 
-                      <form action={deleteContact}>
-                        <input type="hidden" name="id" value={c.id} />
-                        <button className="text-xs text-black/30 hover:text-danger">Delete</button>
-                      </form>
+                      {writable && (
+                        <form action={deleteContact}>
+                          <input type="hidden" name="id" value={c.id} />
+                          <button className="text-xs text-black/30 hover:text-danger">Delete</button>
+                        </form>
+                      )}
                     </li>
                   );
                 })}
@@ -78,10 +82,12 @@ export default async function ContactsPage({
           </div>
         </div>
 
-        <section className="card h-fit p-5">
-          <h2 className="mb-3 text-sm font-semibold">Add contact</h2>
-          <ContactForm companies={companies ?? []} />
-        </section>
+        {writable && (
+          <section className="card h-fit p-5">
+            <h2 className="mb-3 text-sm font-semibold">Add contact</h2>
+            <ContactForm companies={companies ?? []} />
+          </section>
+        )}
       </div>
     </div>
   );

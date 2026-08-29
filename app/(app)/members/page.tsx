@@ -4,7 +4,7 @@ import { signInQuota } from '@/app/auth-quota';
 import { AddMemberForm } from '@/components/add-member-form';
 import { EmailQuotaTracker, type QuotaRequest } from '@/components/email-quota-tracker';
 import { LoginTracker, type LoginRow } from '@/components/login-tracker';
-import { displayName } from '@/lib/types';
+import { ROLE_HINTS, displayName, type Role } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +26,7 @@ export default async function MembersPage() {
     quota,
   ] = await Promise.all([
     supabase.from('profiles').select('id, email, full_name, role').order('email'),
-    supabase.from('allowed_emails').select('email, note, added_at').order('added_at'),
+    supabase.from('allowed_emails').select('email, note, role, added_at').order('added_at'),
     supabase
       .from('auth_email_requests')
       .select('email, outcome, requested_at')
@@ -59,8 +59,9 @@ export default async function MembersPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Members</h1>
         <p className="mt-1 text-sm text-black/55">
-          Anyone on this list can sign in. Everyone sees the same companies — access is all or
-          nothing.
+          Anyone on this list can sign in and sees the same companies. What differs is what they
+          may change: a <strong>viewer</strong> reads only, a <strong>member</strong> reads and
+          writes, an <strong>admin</strong> also manages people and deletes companies.
         </p>
       </div>
 
@@ -98,27 +99,37 @@ export default async function MembersPage() {
 
               <span
                 className={`chip ${
-                  p.role === 'admin' ? 'bg-violet-100 text-violet-800 dark:bg-violet-400/15 dark:text-violet-300' : 'bg-black/[0.05] text-black/55'
+                  p.role === 'admin'
+                    ? 'bg-violet-100 text-violet-800 dark:bg-violet-400/15 dark:text-violet-300'
+                    : p.role === 'viewer'
+                      ? 'bg-black/[0.04] text-black/45'
+                      : 'bg-black/[0.05] text-black/55'
                 }`}
+                title={ROLE_HINTS[p.role as Role]}
               >
                 {p.role}
               </span>
 
               {isAdmin && (
                 <>
-                  {/* The last admin can't be demoted — that would leave nobody
-                      able to manage members. */}
+                  {/* A select rather than a toggle now that there are three
+                      roles. The last admin can't be demoted — that would leave
+                      nobody able to manage members — so they get no control at
+                      all rather than one that errors. */}
                   {!(p.role === 'admin' && adminCount <= 1) && (
-                    <form action={setMemberRole}>
+                    <form action={setMemberRole} className="flex items-center gap-1">
                       <input type="hidden" name="id" value={p.id} />
-                      <input
-                        type="hidden"
+                      <select
                         name="role"
-                        value={p.role === 'admin' ? 'member' : 'admin'}
-                      />
-                      <button className="text-xs text-black/45 hover:text-ink">
-                        {p.role === 'admin' ? 'Make member' : 'Make admin'}
-                      </button>
+                        defaultValue={p.role}
+                        aria-label={`Role for ${p.email}`}
+                        className="field w-28 py-1 text-xs"
+                      >
+                        <option value="viewer">viewer</option>
+                        <option value="member">member</option>
+                        <option value="admin">admin</option>
+                      </select>
+                      <button className="text-xs text-black/45 hover:text-ink">Set</button>
                     </form>
                   )}
 
@@ -160,6 +171,9 @@ export default async function MembersPage() {
                   <div>{a.email}</div>
                   {a.note && <div className="text-xs text-black/45">{a.note}</div>}
                 </div>
+                {/* What they will become on first sign-in, so an invitation
+                    sent as view-only can be checked before they arrive. */}
+                <span className="chip bg-black/[0.04] text-black/45">{a.role ?? 'member'}</span>
                 {isAdmin && (
                   <form action={removeMember}>
                     <input type="hidden" name="email" value={a.email} />

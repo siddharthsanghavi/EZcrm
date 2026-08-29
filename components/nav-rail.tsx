@@ -10,6 +10,7 @@ export type RailCounts = {
   contacts: number | null;
   tasks: number | null;
   members: number | null;
+  deletions: number | null;
 };
 
 const NAV = [
@@ -19,8 +20,13 @@ const NAV = [
   { href: '/map', label: 'Map', key: null },
   { href: '/contacts', label: 'Contacts', key: 'contacts' },
   { href: '/tasks', label: 'Tasks', key: 'tasks' },
+  { href: '/activity', label: 'Activity', key: null },
   { href: '/import', label: 'Import / Export', key: null },
   { href: '/members', label: 'Members', key: 'members' },
+  // Sits by Members because it is the other "who is allowed to do what" page.
+  // The count is pending requests only — a badge for a log nobody has to act on
+  // would be a permanent, meaningless number.
+  { href: '/deletions', label: 'Deletions', key: 'deletions' },
   { href: '/guide', label: 'Guide', key: null },
 ] as const;
 
@@ -127,7 +133,11 @@ export function NavRail({
             </span>
             <div className="min-w-0 flex-1">
               <div className="truncate text-[12.5px] font-medium">{displayName(profile)}</div>
-              <div className="text-[11px] capitalize text-black/40">{profile.role}</div>
+              {/* A viewer needs to know why the buttons are missing before
+                  they go looking for them. */}
+              <div className="text-[11px] capitalize text-black/40">
+                {profile.role === 'viewer' ? 'View only' : profile.role}
+              </div>
             </div>
             <form action="/auth/signout" method="post">
               <button

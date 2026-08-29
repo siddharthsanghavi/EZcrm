@@ -13,9 +13,12 @@ import { STATUS_LABELS, STATUSES, TIERS, displayName, type Profile } from '@/lib
 export function BulkBar({
   members,
   formId,
+  isAdmin,
 }: {
   members: Pick<Profile, 'id' | 'full_name' | 'email'>[];
   formId: string;
+  /** Admins delete outright; everyone else files a request an admin decides. */
+  isAdmin: boolean;
 }) {
   const [count, setCount] = useState(0);
 
@@ -101,6 +104,40 @@ export function BulkBar({
         <button name="op" value="tier" className="btn-ghost py-1.5">
           Set tier
         </button>
+
+        {/* Last, and set apart: everything else here is reversible and this is
+            not. The count is in the prompt because "delete 40 companies" is a
+            different decision from "delete 1". */}
+        <span className="mx-1 h-5 w-px bg-black/10" />
+
+        {isAdmin ? (
+          <button
+            name="op"
+            value="delete"
+            className="btn-ghost py-1.5 text-danger hover:bg-danger/10"
+            onClick={(e) => {
+              const many = count === 1 ? '1 company' : `${count} companies`;
+              const ok = window.confirm(
+                `Delete ${many}, along with their contacts, activity and tasks?\n\nThis cannot be undone.`,
+              );
+              if (!ok) e.preventDefault();
+            }}
+          >
+            Delete
+          </button>
+        ) : (
+          <>
+            <input
+              name="reason"
+              placeholder="Why (optional)"
+              aria-label="Reason for deletion"
+              className="field w-40 py-1.5"
+            />
+            <button name="op" value="request-delete" className="btn-ghost py-1.5">
+              Request deletion
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

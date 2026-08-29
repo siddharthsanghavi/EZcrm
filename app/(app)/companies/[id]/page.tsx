@@ -1,12 +1,19 @@
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
-import { serverClient } from '@/lib/supabase';
-import { deleteCompany, setCompanyStatus } from '@/app/actions';
+import { notFound, redirect } from 'next/navigation';
+import { currentProfile, serverClient } from '@/lib/supabase';
+import {
+  deleteCompany,
+  requestCompanyDeletion,
+  setCompanyStatus,
+  withdrawDeletionRequest,
+} from '@/app/actions';
+import { ConfirmButton } from '@/components/confirm-button';
 import {
   STATUS_LABELS,
   STATUS_STYLES,
   STATUSES,
   TIER_STYLES,
+  canWrite,
   displayName,
   isCold,
   sinceLabel,
@@ -20,6 +27,8 @@ import { ActivityComposer } from '@/components/activity-composer';
 import { ContactForm } from '@/components/contact-form';
 import { QuickTaskForm } from '@/components/quick-task-form';
 import { TaskRow } from '@/components/task-row';
+import { ActivityFeed } from '@/components/activity-feed';
+import { loadFeed } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,8 +46,15 @@ export default async function CompanyPage({
   const { data: company } = await supabase.from('companies').select('*').eq('id', id).maybeSingle();
   if (!company) notFound();
 
-  const [{ data: contacts }, { data: activities }, { data: tasks }, { data: members }, { data: history }] =
-    await Promise.all([
+  const [
+    { data: contacts },
+    { data: activities },
+    { data: tasks },
+    { data: members },
+    history,
+    { data: request },
+    me,
+  ] = await Promise.all([
       supabase.from('contacts').select('*').eq('company_id', id).order('created_at'),
     supabase
       .from('activities')
@@ -52,16 +68,27 @@ export default async function CompanyPage({
       .order('done')
       .order('due_date', { nullsFirst: false }),
     supabase.from('profiles').select('id, full_name, email').order('email'),
+    // The company's own slice of the activity feed — status moves, edits,
+    // contacts, tasks and outreach, in the order they happened.
+    loadFeed({ companyId: id, limit: 30 }),
     supabase
-      .from('status_events')
-      .select('from_status, to_status, changed_at, profiles(full_name, email)')
+      .from('deletion_requests')
+      .select('id, reason, requested_by, requested_at, profiles!deletion_requests_requested_by_fkey(full_name, email)')
       .eq('company_id', id)
-      .order('changed_at', { ascending: false })
-      .limit(20),
+      .eq('status', 'pending')
+      .maybeSingle(),
+    currentProfile(),
   ]);
 
   const today = new Date().toISOString().slice(0, 10);
   const c = company as Company;
+  const isAdmin = me?.role === 'admin';
+  const writable = canWrite(me);
+  const pending = request as
+    | { id: string; reason: string | null; requested_by: string | null; requested_at: string; profiles: unknown }
+    | null;
+
+  if (edit && !writable) redirect(`/companies/${id}`);
 
   if (edit) {
     return (
@@ -72,16 +99,58 @@ export default async function CompanyPage({
         <h1 className="text-2xl font-semibold tracking-tight">Edit company</h1>
         <CompanyForm company={c} />
 
-        <form action={deleteCompany} className="card border-danger/30 p-5">
-          <input type="hidden" name="id" value={id} />
-          <h2 className="text-sm font-semibold text-danger">Delete this company</h2>
-          <p className="mt-1 text-sm text-black/55">
-            Removes its contacts, activity, and tasks too. This can&apos;t be undone.
-          </p>
-          <button className="btn mt-3 border border-danger/40 text-danger hover:bg-danger/10">
-            Delete {c.name}
-          </button>
-        </form>
+        {isAdmin ? (
+          <form action={deleteCompany} className="card border-danger/30 p-5">
+            <input type="hidden" name="id" value={id} />
+            <h2 className="text-sm font-semibold text-danger">Delete this company</h2>
+            <p className="mt-1 text-sm text-black/55">
+              Removes its contacts, activity, and tasks too. This can&apos;t be undone — a line in
+              the <Link href="/deletions" className="underline">deletion log</Link> is all that
+              survives.
+            </p>
+            <ConfirmButton
+              message={`Delete ${c.name}, along with its contacts, activity and tasks?\n\nThis cannot be undone.`}
+              className="btn mt-3 border border-danger/40 text-danger hover:bg-danger/10"
+            >
+              Delete {c.name}
+            </ConfirmButton>
+          </form>
+        ) : pending ? (
+          <div className="card p-5">
+            <h2 className="text-sm font-semibold">Deletion requested</h2>
+            <p className="mt-1 text-sm text-black/55">
+              Waiting for an admin to decide. See{' '}
+              <Link href="/deletions" className="underline">
+                Deletions
+              </Link>
+              .
+            </p>
+            {pending.requested_by === me?.id && (
+              <form action={withdrawDeletionRequest} className="mt-3">
+                <input type="hidden" name="id" value={pending.id} />
+                <button className="btn-ghost">Withdraw the request</button>
+              </form>
+            )}
+          </div>
+        ) : (
+          /* Members cannot delete — RLS says so — so the honest control here is
+             the one that asks. */
+          <form action={requestCompanyDeletion} className="card p-5">
+            <input type="hidden" name="id" value={id} />
+            <h2 className="text-sm font-semibold">Request deletion</h2>
+            <p className="mt-1 text-sm text-black/55">
+              An admin has to approve it. Saying why makes that a two-second decision rather than a
+              conversation.
+            </p>
+            <textarea
+              name="reason"
+              rows={2}
+              placeholder="Duplicate of… / closed down / never a real prospect"
+              className="field mt-3 w-full"
+            />
+            <button className="btn mt-3 border border-black/15">Request deletion</button>
+          </form>
+        )}
       </div>
     );
   }
@@ -138,31 +207,56 @@ export default async function CompanyPage({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <form action={setCompanyStatus} className="flex items-center gap-2">
-              <input type="hidden" name="id" value={id} />
-              <select
-                name="status"
-                defaultValue={c.status}
-                className="field w-44 py-1.5"
-                aria-label="Status"
-              >
-                {STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {STATUS_LABELS[s]}
-                  </option>
-                ))}
-              </select>
-              <button className="btn-ghost py-1.5">Update</button>
-            </form>
-            <OwnerPicker companyId={id} ownerId={c.owner_id} members={members ?? []} />
-            <TierPicker companyId={id} tier={c.tier} />
-            <Link href={`/companies/${id}?edit=1`} className="btn-ghost py-1.5">
-              Edit
-            </Link>
-          </div>
+          {writable ? (
+            <div className="flex items-center gap-2">
+              <form action={setCompanyStatus} className="flex items-center gap-2">
+                <input type="hidden" name="id" value={id} />
+                <select
+                  name="status"
+                  defaultValue={c.status}
+                  className="field w-44 py-1.5"
+                  aria-label="Status"
+                >
+                  {STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {STATUS_LABELS[s]}
+                    </option>
+                  ))}
+                </select>
+                <button className="btn-ghost py-1.5">Update</button>
+              </form>
+              <OwnerPicker companyId={id} ownerId={c.owner_id} members={members ?? []} />
+              <TierPicker companyId={id} tier={c.tier} />
+              <Link href={`/companies/${id}?edit=1`} className="btn-ghost py-1.5">
+                Edit
+              </Link>
+            </div>
+          ) : (
+            /* A viewer still needs to see the status; it just isn't a control. */
+            <span className={`chip ${STATUS_STYLES[c.status as Status]}`}>
+              {STATUS_LABELS[c.status as Status]}
+            </span>
+          )}
         </div>
       </div>
+
+      {/* Anyone opening this company should know it is on its way out before
+          they spend twenty minutes logging a call against it. */}
+      {pending && (
+        <div className="card flex flex-wrap items-center justify-between gap-3 border-warn/40 px-5 py-3 text-sm">
+          <span>
+            <span className="font-medium">Deletion requested</span>
+            <span className="text-black/55">
+              {' '}
+              by {displayName(pending.profiles as { full_name: string | null; email: string } | null)}
+              {pending.reason && <> — {pending.reason}</>}
+            </span>
+          </span>
+          <Link href="/deletions" className="btn-ghost py-1.5">
+            {isAdmin ? 'Decide' : 'See requests'}
+          </Link>
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
         <div className="space-y-6">
@@ -187,12 +281,14 @@ export default async function CompanyPage({
             </section>
           )}
 
-          <section className="card p-5">
-            <h2 className="text-sm font-semibold">Log activity</h2>
-            <div className="mt-3">
-              <ActivityComposer companyId={id} contacts={contacts ?? []} />
-            </div>
-          </section>
+          {writable && (
+            <section className="card p-5">
+              <h2 className="text-sm font-semibold">Log activity</h2>
+              <div className="mt-3">
+                <ActivityComposer companyId={id} contacts={contacts ?? []} />
+              </div>
+            </section>
+          )}
 
           <section className="card overflow-hidden">
             <h2 className="border-b border-black/10 px-5 py-3 text-sm font-semibold">Timeline</h2>
@@ -261,52 +357,41 @@ export default async function CompanyPage({
               </ul>
             )}
 
-            <div className="border-t border-black/10 p-4">
-              <ContactForm companyId={id} compact />
-            </div>
+            {writable && (
+              <div className="border-t border-black/10 p-4">
+                <ContactForm companyId={id} compact />
+              </div>
+            )}
           </section>
 
           <section className="card overflow-hidden">
             <h2 className="border-b border-black/10 px-5 py-3 text-sm font-semibold">Tasks</h2>
-            {tasks && tasks.length > 0 && (
+            {tasks && tasks.length > 0 ? (
               <ul className="divide-y divide-black/5">
                 {tasks.map((t) => (
-                  <TaskRow key={t.id} task={t as never} today={today} showDelete />
+                  <TaskRow key={t.id} task={t as never} today={today} showDelete readOnly={!writable} />
                 ))}
               </ul>
+            ) : (
+              !writable && <p className="px-5 py-4 text-xs text-black/45">No tasks.</p>
             )}
-            <div className="border-t border-black/10 p-4">
-              <QuickTaskForm companyId={id} />
-            </div>
+            {writable && (
+              <div className="border-t border-black/10 p-4">
+                <QuickTaskForm companyId={id} />
+              </div>
+            )}
           </section>
 
+          {/* Was "Status history", which only ever showed status. Everything
+              that happens to this company now lands here. */}
           <section className="card overflow-hidden">
-            <h2 className="border-b border-black/10 px-5 py-3 text-sm font-semibold">
-              Status history
-            </h2>
-            {history && history.length > 0 ? (
-              <ul className="divide-y divide-black/5">
-                {history.map((h, i) => {
-                  const who = h.profiles as unknown as
-                    | { full_name: string | null; email: string }
-                    | null;
-                  return (
-                    <li key={i} className="px-5 py-3 text-xs">
-                      <div className="text-black/70">
-                        {h.from_status
-                          ? `${STATUS_LABELS[h.from_status as Status]} → ${STATUS_LABELS[h.to_status as Status]}`
-                          : `Added as ${STATUS_LABELS[h.to_status as Status]}`}
-                      </div>
-                      <div className="mt-0.5 text-black/40">
-                        {displayName(who)} · {new Date(h.changed_at).toLocaleDateString()}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : (
-              <p className="px-5 py-4 text-xs text-black/45">No changes recorded yet.</p>
-            )}
+            <h2 className="border-b border-black/10 px-5 py-3 text-sm font-semibold">History</h2>
+            <ActivityFeed
+              events={history}
+              showCompany={false}
+              omitName={c.name}
+              empty="No changes recorded yet."
+            />
           </section>
         </div>
       </div>

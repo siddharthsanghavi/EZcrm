@@ -6,14 +6,45 @@ import { currentProfile, serverClient } from '@/lib/supabase';
 import { ACTIVITY_TYPES, INTERESTS, STATUSES, TIERS } from '@/lib/types';
 import { normalizeViewQuery } from '@/lib/views';
 
-/**
- * Every action starts here. RLS would reject a non-member anyway, but failing
- * fast keeps the error messages honest and avoids writing half a record.
- */
-async function requireMember() {
+/** Signed in and on the allowlist. Says nothing about what they may change. */
+async function requireProfile() {
   const profile = await currentProfile();
   if (!profile) redirect('/no-access');
   return { profile, supabase: await serverClient() };
+}
+
+/**
+ * Every action that changes data starts here. RLS would reject a viewer anyway,
+ * but failing fast keeps the error messages honest and avoids writing half a
+ * record.
+ *
+ * A viewer reaching this point has gone around the UI — every write control is
+ * hidden from them — so the message is short rather than apologetic.
+ */
+async function requireMember() {
+  const ctx = await requireProfile();
+  if (ctx.profile.role === 'viewer') {
+    throw new Error('Your account has view-only access.');
+  }
+  return ctx;
+}
+
+/**
+ * For the actions that delete companies. `requireAdmin` (further down, next to
+ * the member-admin actions) returns null for a non-admin, which suits a form
+ * that can show `{ error }`; these are <form action> handlers that resolve to
+ * void, so they have to throw instead.
+ *
+ * Worth being loud about: RLS refuses a member's delete by matching no rows,
+ * which looks exactly like success. Without this, someone without the rights
+ * would be told their deletion went through when nothing happened.
+ */
+async function requireDeleter() {
+  const ctx = await requireAdmin();
+  if (!ctx) {
+    throw new Error('Only admins can delete companies. File a deletion request instead.');
+  }
+  return ctx;
 }
 
 const text = (v: FormDataEntryValue | null) => {
@@ -135,7 +166,7 @@ export async function setTaskAssignee(formData: FormData) {
 }
 
 export async function deleteCompany(formData: FormData) {
-  const { supabase } = await requireMember();
+  const { supabase } = await requireDeleter();
   const id = text(formData.get('id'));
   if (!id) return;
 
@@ -282,6 +313,8 @@ export async function bulkApply(formData: FormData) {
   const op = formData.get('op');
   if (op === 'status') return bulkStatus(formData);
   if (op === 'tier') return bulkTier(formData);
+  if (op === 'delete') return bulkDelete(formData);
+  if (op === 'request-delete') return bulkRequestDeletion(formData);
   return bulkAssign(formData);
 }
 
@@ -325,6 +358,145 @@ export async function bulkStatus(formData: FormData) {
 
   revalidatePath('/companies');
   revalidatePath('/pipeline');
+}
+
+/**
+ * Delete many companies at once, with their contacts, activity and tasks
+ * following via `on delete cascade`.
+ *
+ * Admins only, and an admin may delete anything — so `kept` should always be 0
+ * today. It is still counted and reported, because RLS refuses by matching no
+ * rows rather than erroring: if the policy is ever narrowed again, this reports
+ * the shortfall instead of silently implying the whole batch is gone.
+ */
+export async function bulkDelete(formData: FormData) {
+  const { supabase } = await requireDeleter();
+  const list = ids(formData);
+  if (list.length === 0) return;
+
+  const { data, error } = await supabase
+    .from('companies')
+    .delete()
+    .in('id', list)
+    .select('id');
+
+  if (error) throw new Error(`Could not delete companies: ${error.message}`);
+
+  const deleted = data?.length ?? 0;
+  const kept = list.length - deleted;
+
+  revalidatePath('/companies');
+  revalidatePath('/pipeline');
+  revalidatePath('/map');
+  revalidatePath('/');
+
+  const params = new URLSearchParams({ deleted: String(deleted) });
+  if (kept > 0) params.set('kept', String(kept));
+  redirect(`/companies?${params}`);
+}
+
+// ------------------------------------------------------ deletion requests
+
+/**
+ * A member cannot delete a company, so they ask.
+ *
+ * A pending request is unique per company at the database level, so two people
+ * asking for the same deletion is not an error — the second ask simply joins
+ * the first. `ignoreDuplicates` makes that quiet rather than a failure page.
+ */
+export async function requestCompanyDeletion(formData: FormData) {
+  const { profile, supabase } = await requireMember();
+  const company_id = text(formData.get('id'));
+  if (!company_id) return;
+
+  const { error } = await supabase.from('deletion_requests').upsert(
+    {
+      company_id,
+      requested_by: profile.id,
+      reason: text(formData.get('reason')),
+      status: 'pending',
+    },
+    { onConflict: 'company_id', ignoreDuplicates: true },
+  );
+  if (error) throw new Error(`Could not file the request: ${error.message}`);
+
+  revalidatePath(`/companies/${company_id}`);
+  revalidatePath('/deletions');
+}
+
+/** Ask for many at once, with one reason covering the batch. */
+export async function bulkRequestDeletion(formData: FormData) {
+  const { profile, supabase } = await requireMember();
+  const list = ids(formData);
+  if (list.length === 0) return;
+
+  const reason = text(formData.get('reason'));
+  const { error } = await supabase.from('deletion_requests').upsert(
+    list.map((company_id) => ({
+      company_id,
+      requested_by: profile.id,
+      reason,
+      status: 'pending',
+    })),
+    { onConflict: 'company_id', ignoreDuplicates: true },
+  );
+  if (error) throw new Error(`Could not file the requests: ${error.message}`);
+
+  revalidatePath('/deletions');
+  redirect(`/deletions?requested=${list.length}`);
+}
+
+/** Change your mind. Only your own, and only while it is still pending. */
+export async function withdrawDeletionRequest(formData: FormData) {
+  const { supabase } = await requireMember();
+  const id = text(formData.get('id'));
+  if (!id) return;
+
+  await supabase
+    .from('deletion_requests')
+    .update({ status: 'withdrawn', decided_at: new Date().toISOString() })
+    .eq('id', id);
+
+  revalidatePath('/deletions');
+  revalidatePath('/companies');
+}
+
+/**
+ * Approve: the company goes now.
+ *
+ * There is nothing to mark approved afterwards — the request row cascades away
+ * with the company. What happened is recorded in `company_deletions`, where the
+ * trigger copies the requester and their reason off this request first.
+ */
+export async function approveDeletionRequest(formData: FormData) {
+  const { supabase } = await requireDeleter();
+  const company_id = text(formData.get('company_id'));
+  if (!company_id) return;
+
+  const { error } = await supabase.from('companies').delete().eq('id', company_id);
+  if (error) throw new Error(`Could not delete company: ${error.message}`);
+
+  revalidatePath('/deletions');
+  revalidatePath('/companies');
+  revalidatePath('/pipeline');
+  revalidatePath('/map');
+  revalidatePath('/');
+}
+
+/** Decline, through the checked function so the decision is attributable. */
+export async function declineDeletionRequest(formData: FormData) {
+  const { supabase } = await requireDeleter();
+  const id = text(formData.get('id'));
+  if (!id) return;
+
+  const { error } = await supabase.rpc('decide_deletion_request', {
+    request: id,
+    note: text(formData.get('note')),
+  });
+  if (error) throw new Error(`Could not decline the request: ${error.message}`);
+
+  revalidatePath('/deletions');
+  revalidatePath('/companies');
 }
 
 // ----------------------------------------------------------- saved views
@@ -383,9 +555,13 @@ export async function addAllowedEmail(formData: FormData) {
   const email = text(formData.get('email'))?.toLowerCase();
   if (!email || !email.includes('@')) return { error: 'Enter a valid email address.' };
 
-  const { error } = await ctx.supabase
-    .from('allowed_emails')
-    .insert({ email, note: text(formData.get('note')) });
+  const { error } = await ctx.supabase.from('allowed_emails').insert({
+    email,
+    note: text(formData.get('note')),
+    // Decides what they become on first sign-in, so an invited viewer never
+    // spends a day as a member.
+    role: oneOf(formData.get('role'), ['viewer', 'member', 'admin'] as const, 'member'),
+  });
 
   if (error) {
     return {
@@ -430,7 +606,7 @@ export async function setMemberRole(formData: FormData) {
   // admin and refuses to remove the last admin.
   await ctx.supabase.rpc('set_member_role', {
     target: id,
-    new_role: formData.get('role') === 'admin' ? 'admin' : 'member',
+    new_role: oneOf(formData.get('role'), ['viewer', 'member', 'admin'] as const, 'member'),
   });
 
   revalidatePath('/members');
@@ -438,7 +614,10 @@ export async function setMemberRole(formData: FormData) {
 
 /** Anyone can set their own display name; it beats showing an email prefix. */
 export async function updateMyName(formData: FormData) {
-  const { profile, supabase } = await requireMember();
+  // requireProfile, not requireMember: your own display name is yours to set
+  // whatever your role, and RLS agrees — profiles_self_update matches on
+  // auth.uid() rather than on write access.
+  const { profile, supabase } = await requireProfile();
   await supabase
     .from('profiles')
     .update({ full_name: text(formData.get('full_name')) })

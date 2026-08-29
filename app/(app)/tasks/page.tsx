@@ -1,4 +1,5 @@
-import { serverClient } from '@/lib/supabase';
+import { currentProfile, serverClient } from '@/lib/supabase';
+import { canWrite } from '@/lib/types';
 import { TaskRow } from '@/components/task-row';
 import { QuickTaskForm } from '@/components/quick-task-form';
 
@@ -6,6 +7,8 @@ export const dynamic = 'force-dynamic';
 
 export default async function TasksPage() {
   const supabase = await serverClient();
+  const me = await currentProfile();
+  const writable = canWrite(me);
   const today = new Date().toISOString().slice(0, 10);
 
   const { data: tasks } = await supabase
@@ -30,30 +33,32 @@ export default async function TasksPage() {
           {overdue.length > 0 && (
             <Section title={`Overdue · ${overdue.length}`}>
               {overdue.map((t) => (
-                <TaskRow key={t.id} task={t as never} today={today} showDelete />
+                <TaskRow key={t.id} task={t as never} today={today} showDelete readOnly={!writable} />
               ))}
             </Section>
           )}
 
           <Section title={`Open · ${upcoming.length}`} empty="Nothing outstanding.">
             {upcoming.map((t) => (
-              <TaskRow key={t.id} task={t as never} today={today} showDelete />
+              <TaskRow key={t.id} task={t as never} today={today} showDelete readOnly={!writable} />
             ))}
           </Section>
 
           {done.length > 0 && (
             <Section title={`Done · ${done.length}`}>
               {done.slice(0, 30).map((t) => (
-                <TaskRow key={t.id} task={t as never} today={today} showDelete />
+                <TaskRow key={t.id} task={t as never} today={today} showDelete readOnly={!writable} />
               ))}
             </Section>
           )}
         </div>
 
-        <section className="card h-fit p-5">
-          <h2 className="mb-3 text-sm font-semibold">New task</h2>
-          <QuickTaskForm />
-        </section>
+        {writable && (
+          <section className="card h-fit p-5">
+            <h2 className="mb-3 text-sm font-semibold">New task</h2>
+            <QuickTaskForm />
+          </section>
+        )}
       </div>
     </div>
   );

@@ -13,11 +13,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Counts for the rail. `head: true` fetches no rows, so these are four cheap
   // COUNT queries — worth it to make a destination worth clicking. Open tasks
   // only: a rail badge counting finished work would be noise.
-  const [companies, contacts, tasks, members] = await Promise.all([
+  const [companies, contacts, tasks, members, deletions] = await Promise.all([
     supabase.from('companies').select('id', { count: 'exact', head: true }),
     supabase.from('contacts').select('id', { count: 'exact', head: true }),
     supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('done', false),
     supabase.from('profiles').select('id', { count: 'exact', head: true }),
+    supabase
+      .from('deletion_requests')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'pending'),
   ]);
 
   const counts: RailCounts = {
@@ -25,6 +29,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     contacts: contacts.count,
     tasks: tasks.count,
     members: members.count,
+    // Zero pending is the normal state, and a permanent "0" is noise.
+    deletions: deletions.count || null,
   };
 
   return (

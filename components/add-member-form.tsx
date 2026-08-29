@@ -25,7 +25,14 @@ export function AddMemberForm() {
           placeholder="name@club.org"
           className="field max-w-xs"
         />
-        <input name="note" placeholder="Role (optional)" className="field max-w-[10rem]" />
+        <input name="note" placeholder="Note (optional)" className="field max-w-[10rem]" />
+        {/* Chosen at invitation time rather than after: an invited viewer who
+            arrives as a member has already had write access for a day. */}
+        <select name="role" defaultValue="member" aria-label="Role" className="field w-28">
+          <option value="viewer">viewer</option>
+          <option value="member">member</option>
+          <option value="admin">admin</option>
+        </select>
         <button className="btn-primary" disabled={pending}>
           {pending ? 'Adding…' : 'Add'}
         </button>

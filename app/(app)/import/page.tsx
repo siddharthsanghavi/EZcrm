@@ -17,7 +17,9 @@ export default async function ImportPage() {
         </p>
       </div>
 
-      <CsvImport />
+      {/* Importing writes hundreds of rows at once — the last thing a viewer
+          should be offered. Export stays, because reading is the point. */}
+      {profile?.role !== 'viewer' && <CsvImport />}
 
       <section className="card p-6">
         <h2 className="text-sm font-semibold">Export</h2>

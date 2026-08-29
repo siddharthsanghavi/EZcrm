@@ -12,24 +12,37 @@ type Props = {
   };
   today: string;
   showDelete?: boolean;
+  /** Viewers get the same row without the tick box or the delete link. */
+  readOnly?: boolean;
 };
 
-export function TaskRow({ task, today, showDelete = false }: Props) {
+export function TaskRow({ task, today, showDelete = false, readOnly = false }: Props) {
   const overdue = !task.done && task.due_date !== null && task.due_date < today;
 
   return (
     <li className="flex items-center gap-3 px-5 py-3 text-sm">
-      <form action={toggleTask} className="flex">
-        <input type="hidden" name="id" value={task.id} />
-        <input type="hidden" name="done" value={String(!task.done)} />
-        <button
-          type="submit"
-          aria-label={task.done ? 'Mark as not done' : 'Mark as done'}
-          className={`h-4 w-4 rounded border transition ${
-            task.done ? 'border-ink bg-ink' : 'border-black/25 hover:border-ink'
+      {readOnly ? (
+        // Still a box, so the row keeps its shape and a ticked task still reads
+        // as ticked — it just isn't a control.
+        <span
+          aria-label={task.done ? 'Done' : 'Not done'}
+          className={`h-4 w-4 shrink-0 rounded border ${
+            task.done ? 'border-black/25 bg-black/25' : 'border-black/15'
           }`}
         />
-      </form>
+      ) : (
+        <form action={toggleTask} className="flex">
+          <input type="hidden" name="id" value={task.id} />
+          <input type="hidden" name="done" value={String(!task.done)} />
+          <button
+            type="submit"
+            aria-label={task.done ? 'Mark as not done' : 'Mark as done'}
+            className={`h-4 w-4 rounded border transition ${
+              task.done ? 'border-ink bg-ink' : 'border-black/25 hover:border-ink'
+            }`}
+          />
+        </form>
+      )}
 
       <div className="min-w-0 flex-1">
         <div className={task.done ? 'text-black/35 line-through' : ''}>{task.title}</div>
@@ -52,7 +65,7 @@ export function TaskRow({ task, today, showDelete = false }: Props) {
         </span>
       )}
 
-      {showDelete && (
+      {showDelete && !readOnly && (
         <form action={deleteTask}>
           <input type="hidden" name="id" value={task.id} />
           <button className="text-xs text-black/30 hover:text-danger">Delete</button>

@@ -715,6 +715,610 @@ $$;
 revoke execute on function set_company_point(uuid, double precision, double precision)
   from anon, authenticated, public;
 
+
+-- -------------------------------------------------- company deletions
+-- Deletions are logged, and members request rather than perform them.
+-- See supabase/migrations/013_deletion_requests.sql for the reasoning.
+-- ------------------------------------------------------------------ audit log
+
+-- Deliberately NO foreign key to companies: the whole point is to outlive the
+-- company. `snapshot` keeps the row as it was, so an accidental deletion can be
+-- retyped from the log rather than reconstructed from memory.
+create table if not exists company_deletions (
+  id             uuid primary key default uuid_generate_v4(),
+  company_id     uuid not null,
+  company_name   text not null,
+  snapshot       jsonb not null,
+  deleted_by     uuid references profiles on delete set null,
+  deleted_at     timestamptz not null default clock_timestamp(),
+  -- Copied off the pending request as it cascades away, so the log can still
+  -- answer "who asked for this?" long after the request row is gone.
+  requested_by   uuid references profiles on delete set null,
+  request_reason text
+);
+
+create index if not exists company_deletions_recent_idx on company_deletions (deleted_at desc);
+
+alter table company_deletions enable row level security;
+
+do $$
+begin
+  -- Club-visible, like the status history: the log is only useful if the person
+  -- wondering where a company went can read it.
+  if not exists (select 1 from pg_policies
+                  where tablename='company_deletions' and policyname='company_deletions_read') then
+    create policy company_deletions_read on company_deletions for select using (is_member());
+  end if;
+end $$;
+
+-- No insert/update/delete policy at all: rows arrive only through the trigger
+-- below, which is security definer. An append-only log nobody can edit.
+
+-- ------------------------------------------------------------------- requests
+
+create table if not exists deletion_requests (
+  id           uuid primary key default uuid_generate_v4(),
+  -- Cascades: an approved request's company is gone, and so is the request.
+  -- What happened is recorded in company_deletions, which does not cascade.
+  company_id   uuid not null references companies on delete cascade,
+  requested_by uuid references profiles on delete set null,
+  requested_at timestamptz not null default now(),
+  reason       text,
+  status       text not null default 'pending'
+                 check (status in ('pending', 'declined', 'withdrawn')),
+  decided_by   uuid references profiles on delete set null,
+  decided_at   timestamptz,
+  decision_note text
+);
+
+-- One live request per company. A second member asking for the same deletion
+-- should join the existing request, not open a competing one.
+create unique index if not exists deletion_requests_one_pending
+  on deletion_requests (company_id) where status = 'pending';
+create index if not exists deletion_requests_recent_idx on deletion_requests (requested_at desc);
+
+alter table deletion_requests enable row level security;
+
+do $$
+begin
+  if not exists (select 1 from pg_policies
+                  where tablename='deletion_requests' and policyname='deletion_requests_read') then
+    create policy deletion_requests_read on deletion_requests for select using (is_member());
+  end if;
+
+  -- You can only file a request in your own name, and only as pending: an
+  -- already-decided request would be a decision nobody made.
+  if not exists (select 1 from pg_policies
+                  where tablename='deletion_requests' and policyname='deletion_requests_insert') then
+    create policy deletion_requests_insert on deletion_requests
+      for insert with check (is_member() and requested_by = auth.uid() and status = 'pending');
+  end if;
+
+  -- Withdrawing your own request is the only update a member can make directly.
+  -- An admin's decision goes through decide_deletion_request() below, so that
+  -- `decided_by` is whoever actually decided rather than whoever typed it.
+  if not exists (select 1 from pg_policies
+                  where tablename='deletion_requests' and policyname='deletion_requests_withdraw') then
+    create policy deletion_requests_withdraw on deletion_requests
+      for update using (requested_by = auth.uid() and status = 'pending')
+      with check (requested_by = auth.uid() and status = 'withdrawn');
+  end if;
+end $$;
+
+-- ------------------------------------------------------- recording a deletion
+
+-- A trigger rather than application code, for the same reason status changes
+-- are: it fires wherever the delete comes from -- the UI, the SQL editor, a
+-- cascade -- and cannot be forgotten at a call site.
+create or replace function log_company_deletion()
+returns trigger
+language plpgsql
+security definer set search_path = public, pg_temp
+as $$
+declare req record;
+begin
+  select requested_by, reason into req
+  from deletion_requests
+  where company_id = old.id and status = 'pending'
+  limit 1;
+
+  insert into company_deletions
+    (company_id, company_name, snapshot, deleted_by, requested_by, request_reason)
+  values
+    (old.id, old.name, to_jsonb(old), auth.uid(), req.requested_by, req.reason);
+
+  return old;
+end;
+$$;
+
+revoke execute on function log_company_deletion() from anon, authenticated, public;
+
+drop trigger if exists companies_deletion_log on companies;
+create trigger companies_deletion_log
+  before delete on companies
+  for each row execute function log_company_deletion();
+
+-- ------------------------------------------------------------ admin decisions
+
+-- Declining is a write a member must not be able to forge, so it goes through a
+-- checked function -- the same shape as set_member_role(). Approving needs no
+-- function: an admin simply deletes the company, and the trigger above records
+-- the request that prompted it.
+create or replace function decide_deletion_request(request uuid, note text default null)
+returns void
+language plpgsql
+security definer set search_path = public, pg_temp
+as $$
+begin
+  if not is_admin() then
+    raise exception 'Only admins can decide deletion requests';
+  end if;
+
+  update deletion_requests
+     set status = 'declined',
+         decided_by = auth.uid(),
+         decided_at = now(),
+         decision_note = note
+   where id = request and status = 'pending';
+end;
+$$;
+
+revoke execute on function decide_deletion_request(uuid, text) from anon, public;
+grant execute on function decide_deletion_request(uuid, text) to authenticated;
+
+-- ------------------------------------------------------ narrow the delete path
+
+-- Was: is_admin() or created_by = auth.uid(). A member deleting the company they
+-- added is exactly the case this feature replaces with a request, so the policy
+-- narrows to admins. Contacts, activities and tasks keep their own delete
+-- policy -- this is about companies, which take everything else with them.
+drop policy if exists companies_delete on companies;
+create policy companies_delete on companies for delete using (is_admin());
+
+
+-- ------------------------------------------------------ activity feed
+-- Every write to companies, contacts, tasks, activities and deletion
+-- requests, as one readable stream. Sign-ins are deliberately excluded --
+-- see supabase/migrations/014_audit_events.sql for the full reasoning.
+
+create table if not exists audit_events (
+  id         uuid primary key default uuid_generate_v4(),
+  -- clock_timestamp(), not now(): several events can share a transaction (a
+  -- bulk assign, a cascade) and now() would give them all one timestamp and an
+  -- arbitrary order.
+  at         timestamptz not null default clock_timestamp(),
+  -- Null when nobody was signed in -- the geocode function, a SQL editor
+  -- session, a cascade. The UI says "automatically" rather than inventing a name.
+  actor      uuid references profiles on delete set null,
+  entity     text not null check (entity in ('company', 'contact', 'task', 'activity', 'deletion_request')),
+  action     text not null check (action in (
+               'created', 'updated', 'deleted', 'status_changed', 'assigned',
+               'tier_changed', 'completed', 'reopened', 'requested', 'declined', 'withdrawn')),
+  entity_id  uuid,
+  -- No foreign key, for the same reason company_deletions has none: an event
+  -- about a deleted company has to outlive the company.
+  company_id uuid,
+  summary    text not null,
+  details    jsonb
+);
+
+create index if not exists audit_events_recent_idx  on audit_events (at desc);
+create index if not exists audit_events_company_idx on audit_events (company_id, at desc);
+create index if not exists audit_events_actor_idx   on audit_events (actor, at desc);
+
+alter table audit_events enable row level security;
+
+do $$
+begin
+  if not exists (select 1 from pg_policies
+                  where tablename='audit_events' and policyname='audit_events_read') then
+    create policy audit_events_read on audit_events for select using (is_member());
+  end if;
+end $$;
+
+-- Append-only: no insert/update/delete policy, so rows can only arrive through
+-- the security definer triggers below.
+
+create or replace function audit_log(
+  p_entity text, p_action text, p_entity_id uuid, p_company_id uuid,
+  p_summary text, p_details jsonb default null)
+returns void
+language sql
+security definer set search_path = public, pg_temp
+as $$
+  insert into audit_events (actor, entity, action, entity_id, company_id, summary, details)
+  values (auth.uid(), p_entity, p_action, p_entity_id, p_company_id, p_summary, p_details);
+$$;
+
+revoke execute on function audit_log(text, text, uuid, uuid, text, jsonb) from anon, authenticated, public;
+
+-- Columns the database maintains for itself. An event for each of these would
+-- mean every logged call also produced "someone updated this company", which is
+-- noise standing exactly where the signal should be.
+create or replace function audit_ignored_column(col text)
+returns boolean
+language sql
+immutable
+as $$
+  select col in ('updated_at', 'last_touch_at', 'tier_rank', 'area', 'geo_precision');
+$$;
+
+-- Which real fields changed, as a text[] -- for the "updated (city, phone)" tail
+-- that makes an update event worth reading.
+create or replace function audit_changed_fields(before jsonb, after jsonb)
+returns text[]
+language sql
+immutable
+as $$
+  select coalesce(array_agg(key order by key), '{}')
+  from jsonb_each(after)
+  where not audit_ignored_column(key)
+    and value is distinct from (before -> key);
+$$;
+
+-- ------------------------------------------------------------------ companies
+
+create or replace function audit_company()
+returns trigger
+language plpgsql
+security definer set search_path = public, pg_temp
+as $$
+declare changed text[];
+begin
+  if tg_op = 'INSERT' then
+    perform audit_log('company', 'created', new.id, new.id,
+                      format('Added %s', new.name),
+                      jsonb_build_object('status', new.status, 'tier', new.tier));
+
+  elsif tg_op = 'DELETE' then
+    perform audit_log('company', 'deleted', old.id, old.id,
+                      format('Deleted %s', old.name), null);
+
+  else
+    -- Status, owner and tier get their own actions: they are the three things
+    -- people scan a feed for, and "updated" would hide them among the rest.
+    if new.status is distinct from old.status then
+      -- Written as words, not as the stored enum: this sentence is read by
+      -- people, and "in_conversation" is a column value, not English.
+      perform audit_log('company', 'status_changed', new.id, new.id,
+                        format('%s: %s → %s', new.name,
+                               initcap(replace(old.status, '_', ' ')),
+                               initcap(replace(new.status, '_', ' '))),
+                        jsonb_build_object('from', old.status, 'to', new.status));
+    end if;
+
+    if new.owner_id is distinct from old.owner_id then
+      perform audit_log('company', 'assigned', new.id, new.id,
+        case
+          when new.owner_id is null then format('Unassigned %s', new.name)
+          else format('Assigned %s to %s', new.name,
+                      coalesce((select coalesce(full_name, email) from profiles where id = new.owner_id), 'someone'))
+        end,
+        jsonb_build_object('from', old.owner_id, 'to', new.owner_id));
+    end if;
+
+    if new.tier is distinct from old.tier then
+      perform audit_log('company', 'tier_changed', new.id, new.id,
+                        format('%s: %s', new.name, coalesce(new.tier, 'unrated')),
+                        jsonb_build_object('from', old.tier, 'to', new.tier));
+    end if;
+
+    -- Everything else, as one event listing the fields.
+    changed := audit_changed_fields(to_jsonb(old), to_jsonb(new));
+    changed := array_remove(array_remove(array_remove(changed, 'status'), 'owner_id'), 'tier');
+
+    if array_length(changed, 1) > 0 then
+      perform audit_log('company', 'updated', new.id, new.id,
+                        format('Edited %s (%s)', new.name, array_to_string(changed, ', ')),
+                        jsonb_build_object('fields', changed));
+    end if;
+  end if;
+
+  return coalesce(new, old);
+end;
+$$;
+
+revoke execute on function audit_company() from anon, authenticated, public;
+
+drop trigger if exists companies_audit on companies;
+create trigger companies_audit
+  after insert or update or delete on companies
+  for each row execute function audit_company();
+
+-- --------------------------------------------------------- children of a company
+--
+-- A company delete cascades to its contacts, activities and tasks. Auditing each
+-- of those would turn one deliberate act into thirty lines of feed, all saying
+-- something the "Deleted X" line above already said. So the child triggers stay
+-- quiet when their company has just gone: inside the cascade the parent row is
+-- already deleted, which is exactly what this checks.
+create or replace function audit_parent_gone(p_company_id uuid)
+returns boolean
+language sql
+security definer set search_path = public, pg_temp
+stable
+as $$
+  select p_company_id is not null and not exists (select 1 from companies where id = p_company_id);
+$$;
+
+revoke execute on function audit_parent_gone(uuid) from anon, authenticated, public;
+
+create or replace function audit_contact()
+returns trigger
+language plpgsql
+security definer set search_path = public, pg_temp
+as $$
+declare
+  who text;
+  changed text[];
+begin
+  if tg_op = 'DELETE' then
+    if audit_parent_gone(old.company_id) then return old; end if;
+    who := trim(concat_ws(' ', old.first_name, old.last_name));
+    perform audit_log('contact', 'deleted', old.id, old.company_id,
+                      format('Removed contact %s', who), null);
+    return old;
+  end if;
+
+  who := trim(concat_ws(' ', new.first_name, new.last_name));
+
+  if tg_op = 'INSERT' then
+    perform audit_log('contact', 'created', new.id, new.company_id,
+                      format('Added contact %s', who),
+                      jsonb_build_object('title', new.title));
+  else
+    changed := audit_changed_fields(to_jsonb(old), to_jsonb(new));
+    if array_length(changed, 1) > 0 then
+      perform audit_log('contact', 'updated', new.id, new.company_id,
+                        format('Edited contact %s (%s)', who, array_to_string(changed, ', ')),
+                        jsonb_build_object('fields', changed));
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke execute on function audit_contact() from anon, authenticated, public;
+
+drop trigger if exists contacts_audit on contacts;
+create trigger contacts_audit
+  after insert or update or delete on contacts
+  for each row execute function audit_contact();
+
+create or replace function audit_task()
+returns trigger
+language plpgsql
+security definer set search_path = public, pg_temp
+as $$
+begin
+  if tg_op = 'DELETE' then
+    if audit_parent_gone(old.company_id) then return old; end if;
+    perform audit_log('task', 'deleted', old.id, old.company_id,
+                      format('Deleted task: %s', old.title), null);
+    return old;
+  end if;
+
+  if tg_op = 'INSERT' then
+    perform audit_log('task', 'created', new.id, new.company_id,
+                      format('Added task: %s', new.title),
+                      jsonb_build_object('due_date', new.due_date));
+
+  elsif new.done is distinct from old.done then
+    -- Ticking a task off is the single most common write in the app, and the
+    -- one people most want to see happening.
+    perform audit_log('task', case when new.done then 'completed' else 'reopened' end,
+                      new.id, new.company_id,
+                      format('%s: %s', case when new.done then 'Completed' else 'Reopened' end, new.title),
+                      null);
+
+  elsif array_length(audit_changed_fields(to_jsonb(old), to_jsonb(new)), 1) > 0 then
+    perform audit_log('task', 'updated', new.id, new.company_id,
+                      format('Edited task: %s', new.title), null);
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke execute on function audit_task() from anon, authenticated, public;
+
+drop trigger if exists tasks_audit on tasks;
+create trigger tasks_audit
+  after insert or update or delete on tasks
+  for each row execute function audit_task();
+
+-- The manual log is itself an action: "Ada logged a call" belongs in the same
+-- stream as "Ada finished a task", even though the call already has its own row.
+create or replace function audit_activity()
+returns trigger
+language plpgsql
+security definer set search_path = public, pg_temp
+as $$
+begin
+  if tg_op = 'DELETE' then
+    if audit_parent_gone(old.company_id) then return old; end if;
+    perform audit_log('activity', 'deleted', old.id, old.company_id,
+                      format('Deleted %s log: %s', old.type, coalesce(old.subject, 'note')), null);
+    return old;
+  end if;
+
+  perform audit_log('activity', 'created', new.id, new.company_id,
+                    format('Logged %s: %s', new.type, coalesce(new.subject, 'note')),
+                    jsonb_build_object('type', new.type));
+  return new;
+end;
+$$;
+
+revoke execute on function audit_activity() from anon, authenticated, public;
+
+drop trigger if exists activities_audit on activities;
+create trigger activities_audit
+  after insert or delete on activities
+  for each row execute function audit_activity();
+
+-- ----------------------------------------------------------- deletion requests
+
+create or replace function audit_deletion_request()
+returns trigger
+language plpgsql
+security definer set search_path = public, pg_temp
+as $$
+declare co text;
+begin
+  select name into co from companies where id = new.company_id;
+
+  if tg_op = 'INSERT' then
+    perform audit_log('deletion_request', 'requested', new.id, new.company_id,
+                      format('Requested deletion of %s', coalesce(co, 'a company')),
+                      jsonb_build_object('reason', new.reason));
+
+  elsif new.status is distinct from old.status and new.status in ('declined', 'withdrawn') then
+    perform audit_log('deletion_request', new.status, new.id, new.company_id,
+                      format('%s the deletion request for %s',
+                             initcap(new.status), coalesce(co, 'a company')),
+                      jsonb_build_object('note', new.decision_note));
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke execute on function audit_deletion_request() from anon, authenticated, public;
+
+drop trigger if exists deletion_requests_audit on deletion_requests;
+create trigger deletion_requests_audit
+  after insert or update on deletion_requests
+  for each row execute function audit_deletion_request();
+
+
+-- ----------------------------------------------------------- viewer role
+-- Three roles: viewer (reads only), member (reads and writes), admin.
+-- is_member() means "may write"; has_access() means "has a profile".
+-- See supabase/migrations/015_viewer_role.sql for the reasoning.
+-- ------------------------------------------------------------------ the role
+
+alter table profiles drop constraint if exists profiles_role_check;
+alter table profiles add constraint profiles_role_check
+  check (role in ('viewer', 'member', 'admin'));
+
+-- Which role a newly allowlisted address gets when they first sign in. Defaults
+-- to member, so every existing row keeps today's behaviour.
+alter table allowed_emails add column if not exists role text not null default 'member'
+  check (role in ('viewer', 'member', 'admin'));
+
+create or replace function has_access()
+returns boolean
+language sql
+security definer set search_path = public
+stable
+as $$
+  select exists (select 1 from profiles where id = auth.uid());
+$$;
+
+-- Note the changed meaning. Anything still calling is_member() is asking "may
+-- this person write?", which is what every remaining caller means.
+create or replace function is_member()
+returns boolean
+language sql
+security definer set search_path = public
+stable
+as $$
+  select exists (select 1 from profiles where id = auth.uid() and role in ('member', 'admin'));
+$$;
+
+-- Same reasoning as the original grant: policy evaluation runs as the querying
+-- role, so without EXECUTE every viewer query fails with "permission denied for
+-- function has_access" instead of returning their rows.
+grant execute on function has_access() to anon, authenticated;
+
+-- ------------------------------------------------------------ read policies
+
+-- Every table a signed-in person may read. The write policies are deliberately
+-- left alone: they call is_member(), which no longer matches a viewer.
+do $$
+declare t text;
+begin
+  foreach t in array array['companies', 'contacts', 'activities', 'tasks'] loop
+    execute format('drop policy if exists %1$s_read on %1$s', t);
+    execute format('create policy %1$s_read on %1$s for select using (has_access())', t);
+  end loop;
+end;
+$$;
+
+drop policy if exists profiles_read on profiles;
+create policy profiles_read on profiles for select using (has_access());
+
+drop policy if exists status_events_read on status_events;
+create policy status_events_read on status_events for select using (has_access());
+
+drop policy if exists audit_events_read on audit_events;
+create policy audit_events_read on audit_events for select using (has_access());
+
+drop policy if exists company_deletions_read on company_deletions;
+create policy company_deletions_read on company_deletions for select using (has_access());
+
+drop policy if exists deletion_requests_read on deletion_requests;
+create policy deletion_requests_read on deletion_requests for select using (has_access());
+
+-- Saved views are shared or private, and that distinction is about people, not
+-- about write access -- so a viewer sees exactly what a member sees.
+drop policy if exists saved_views_read on saved_views;
+create policy saved_views_read on saved_views
+  for select using (has_access() and (shared or owner_id = auth.uid()));
+
+-- ---------------------------------------------------------- managing viewers
+
+create or replace function set_member_role(target uuid, new_role text)
+returns void
+language plpgsql
+security definer set search_path = public, pg_temp
+as $$
+declare admins int;
+begin
+  if not is_admin() then
+    raise exception 'Only admins can change roles';
+  end if;
+  if new_role not in ('viewer', 'member', 'admin') then
+    raise exception 'Invalid role';
+  end if;
+
+  -- Never leave the club without an admin. Demoting to viewer counts too.
+  if new_role <> 'admin' then
+    select count(*) into admins from profiles where role = 'admin';
+    if admins <= 1 and (select role from profiles where id = target) = 'admin' then
+      raise exception 'Cannot remove the last admin';
+    end if;
+  end if;
+
+  update profiles set role = new_role where id = target;
+end;
+$$;
+
+grant execute on function set_member_role(uuid, text) to authenticated;
+
+-- The allowlist decides what someone becomes on first sign-in. Without this an
+-- invited viewer would arrive as a member, which is the whole thing we are
+-- trying to avoid, and nobody would notice until they changed something.
+create or replace function handle_new_user()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+declare invited text;
+begin
+  select role into invited from allowed_emails where lower(email) = lower(new.email);
+
+  if invited is not null then
+    insert into profiles (id, email, full_name, role)
+    values (new.id, new.email, new.raw_user_meta_data ->> 'full_name', invited)
+    on conflict (id) do nothing;
+  end if;
+
+  return new;
+end;
+$$;
+
 -- ---------------------------------------------------------------- bootstrap
 -- Replace with your own address, run it, then sign in once to create your user.
 -- After that, promote yourself:

@@ -1,10 +1,11 @@
 import Link from 'next/link';
-import { serverClient } from '@/lib/supabase';
+import { currentProfile, serverClient } from '@/lib/supabase';
 import {
   COLD_AFTER_DAYS,
   STATUS_DOTS,
   STATUS_LABELS,
   STATUSES,
+  canWrite,
   daysSince,
   displayName,
   isCold,
@@ -12,14 +13,17 @@ import {
   type Status,
 } from '@/lib/types';
 import { TaskRow } from '@/components/task-row';
+import { ActivityFeed } from '@/components/activity-feed';
+import { loadFeed } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Dashboard() {
   const supabase = await serverClient();
+  const writable = canWrite(await currentProfile());
   const today = new Date().toISOString().slice(0, 10);
 
-  const [{ data: companies }, { data: tasks }, { data: activities }] = await Promise.all([
+  const [{ data: companies }, { data: tasks }, feed] = await Promise.all([
     supabase
       .from('companies')
       .select('id, name, status, last_touch_at, profiles!companies_owner_id_fkey(full_name, email)')
@@ -30,11 +34,9 @@ export default async function Dashboard() {
       .eq('done', false)
       .order('due_date', { ascending: true, nullsFirst: false })
       .limit(8),
-    supabase
-      .from('activities')
-      .select('id, type, subject, occurred_at, company_id, companies(name)')
-      .order('occurred_at', { ascending: false })
-      .limit(8),
+    // Not just logged outreach any more: everything anyone did. See
+    // supabase/migrations/014_audit_events.sql.
+    loadFeed({ limit: 8 }),
   ]);
 
   const all = companies ?? [];
@@ -185,7 +187,7 @@ export default async function Dashboard() {
           {tasks && tasks.length > 0 ? (
             <ul className="divide-y divide-black/5">
               {tasks.map((task) => (
-                <TaskRow key={task.id} task={task as never} today={today} />
+                <TaskRow key={task.id} task={task as never} today={today} readOnly={!writable} />
               ))}
             </ul>
           ) : (
@@ -194,39 +196,13 @@ export default async function Dashboard() {
         </section>
 
         <section className="card overflow-hidden">
-          <h2 className="border-b border-black/10 px-5 py-3 text-sm font-semibold">
-            Recent activity
-          </h2>
-          {activities && activities.length > 0 ? (
-            <ul className="divide-y divide-black/5">
-              {activities.map((a) => {
-                const company = a.companies as unknown as { name: string } | null;
-                return (
-                  <li key={a.id} className="px-5 py-3 text-sm">
-                    <div className="flex items-baseline justify-between gap-3">
-                      <span className="truncate">
-                        <span className="text-black/45">{a.type}</span>{' '}
-                        {a.subject ?? 'Note'}
-                      </span>
-                      <span className="shrink-0 text-xs text-black/40">
-                        {new Date(a.occurred_at).toLocaleDateString()}
-                      </span>
-                    </div>
-                    {company && a.company_id && (
-                      <Link
-                        href={`/companies/${a.company_id}`}
-                        className="text-xs text-black/50 hover:text-ink"
-                      >
-                        {company.name}
-                      </Link>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <p className="px-5 py-6 text-sm text-black/45">No activity logged yet.</p>
-          )}
+          <div className="flex items-center justify-between border-b border-black/10 px-5 py-3">
+            <h2 className="text-sm font-semibold">Recent activity</h2>
+            <Link href="/activity" className="text-xs text-black/45 hover:text-ink">
+              See all
+            </Link>
+          </div>
+          <ActivityFeed events={feed} empty="Nothing recorded yet." />
         </section>
       </div>
     </div>

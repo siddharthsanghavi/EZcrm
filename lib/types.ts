@@ -1,4 +1,27 @@
-export type Role = 'member' | 'admin';
+/**
+ * viewer reads everything and writes nothing; member reads and writes; admin
+ * also manages people and is the only role that can delete a company.
+ * Enforced by RLS — see supabase/migrations/015_viewer_role.sql — so the UI
+ * gating below is a courtesy, not the security boundary.
+ */
+export type Role = 'viewer' | 'member' | 'admin';
+
+export const ROLE_LABELS: Record<Role, string> = {
+  viewer: 'viewer',
+  member: 'member',
+  admin: 'admin',
+};
+
+export const ROLE_HINTS: Record<Role, string> = {
+  viewer: 'Can see everything. Cannot change anything.',
+  member: 'Can add and edit companies, contacts, tasks and outreach.',
+  admin: 'Everything a member can do, plus managing people and deleting companies.',
+};
+
+/** Whether this profile may change data at all. */
+export function canWrite(p: { role: Role } | null | undefined) {
+  return p?.role === 'member' || p?.role === 'admin';
+}
 
 export type Profile = {
   id: string;
@@ -131,6 +154,113 @@ export type Task = {
   company_id: string | null;
   contact_id: string | null;
   assignee_id: string | null;
+};
+
+export const AUDIT_ENTITIES = ['company', 'contact', 'task', 'activity', 'deletion_request'] as const;
+export type AuditEntity = (typeof AUDIT_ENTITIES)[number];
+
+export const AUDIT_ENTITY_LABELS: Record<AuditEntity, string> = {
+  company: 'Companies',
+  contact: 'Contacts',
+  task: 'Tasks',
+  activity: 'Outreach',
+  deletion_request: 'Deletions',
+};
+
+export type AuditAction =
+  | 'created'
+  | 'updated'
+  | 'deleted'
+  | 'status_changed'
+  | 'assigned'
+  | 'tier_changed'
+  | 'completed'
+  | 'reopened'
+  | 'requested'
+  | 'declined'
+  | 'withdrawn';
+
+/**
+ * One thing somebody did. Written by trigger — see 014_audit_events.sql — so
+ * the feed covers writes made outside the UI too.
+ */
+export type AuditEvent = {
+  id: string;
+  at: string;
+  actor: string | null;
+  entity: AuditEntity;
+  action: AuditAction;
+  entity_id: string | null;
+  company_id: string | null;
+  summary: string;
+  details: Record<string, unknown> | null;
+};
+
+/**
+ * A verb's colour. Destructive actions are the only ones that get a hue — in a
+ * feed where every line is the same shape, "deleted" is the one you must not
+ * skim past.
+ */
+export const AUDIT_ACTION_STYLES: Record<AuditAction, string> = {
+  created: 'bg-black/[0.05] text-black/55',
+  updated: 'bg-black/[0.05] text-black/55',
+  deleted: 'bg-rose-100 text-rose-800 dark:bg-rose-400/15 dark:text-rose-300',
+  status_changed: 'bg-blue-100 text-blue-800 dark:bg-blue-400/15 dark:text-blue-300',
+  assigned: 'bg-black/[0.05] text-black/55',
+  tier_changed: 'bg-violet-100 text-violet-800 dark:bg-violet-400/15 dark:text-violet-300',
+  completed: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-300',
+  reopened: 'bg-black/[0.05] text-black/55',
+  requested: 'bg-amber-100 text-amber-800 dark:bg-amber-400/15 dark:text-amber-300',
+  declined: 'bg-black/[0.05] text-black/55',
+  withdrawn: 'bg-black/[0.05] text-black/55',
+};
+
+export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
+  created: 'added',
+  updated: 'edited',
+  deleted: 'deleted',
+  status_changed: 'status',
+  assigned: 'assigned',
+  tier_changed: 'tier',
+  completed: 'done',
+  reopened: 'reopened',
+  requested: 'requested',
+  declined: 'declined',
+  withdrawn: 'withdrawn',
+};
+
+/** Who did it. Null actor means no session — the geocoder, or SQL run by hand. */
+export function actorName(p: { full_name: string | null; email: string } | null | undefined) {
+  if (!p) return 'Automatically';
+  return p.full_name?.trim() || p.email.split('@')[0];
+}
+
+/**
+ * A member's ask for a company to be deleted. Approved requests do not appear
+ * here — they cascade away with the company and live on in CompanyDeletion.
+ */
+export type DeletionRequest = {
+  id: string;
+  company_id: string;
+  requested_by: string | null;
+  requested_at: string;
+  reason: string | null;
+  status: 'pending' | 'declined' | 'withdrawn';
+  decided_by: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+};
+
+/** One line of the deletion log. Written by trigger, never edited. */
+export type CompanyDeletion = {
+  id: string;
+  company_id: string;
+  company_name: string;
+  snapshot: Record<string, unknown>;
+  deleted_by: string | null;
+  deleted_at: string;
+  requested_by: string | null;
+  request_reason: string | null;
 };
 
 export type StatusEvent = {

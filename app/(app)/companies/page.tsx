@@ -12,6 +12,7 @@ import {
   STATUSES,
   TIER_STYLES,
   TIERS,
+  canWrite,
   displayName,
   isCold,
   sinceLabel,
@@ -31,6 +32,8 @@ type Search = {
   cold?: string;
   q?: string;
   page?: string;
+  deleted?: string;
+  kept?: string;
 };
 
 /** Rebuild the querystring with one filter changed, always resetting to page 1. */
@@ -49,7 +52,10 @@ export default async function CompaniesPage({
 }: {
   searchParams: Promise<Search>;
 }) {
-  const sp = await searchParams;
+  // `deleted`/`kept` are a one-off notice from bulkDelete, not a filter, so they
+  // are peeled off here — everything downstream builds links from `sp` and would
+  // otherwise carry them along for the rest of the session.
+  const { deleted, kept, ...sp } = await searchParams;
   const { status, tier, type, region, owner, cold, q } = sp;
   const page = Math.max(1, Number.parseInt(sp.page ?? '1', 10) || 1);
 
@@ -108,6 +114,7 @@ export default async function CompaniesPage({
   const types = [...new Set((facets ?? []).map((f) => f.type).filter(Boolean))].sort();
   const regions = [...new Set((facets ?? []).map((f) => f.region).filter(Boolean))].sort();
 
+  const writable = canWrite(me);
   const total = count ?? 0;
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -128,9 +135,11 @@ export default async function CompaniesPage({
             {total.toLocaleString()} match{total === 1 ? '' : 'es'}
           </p>
         </div>
-        <Link href="/companies/new" className="btn-primary">
-          Add company
-        </Link>
+        {writable && (
+          <Link href="/companies/new" className="btn-primary">
+            Add company
+          </Link>
+        )}
       </div>
 
       <div className="card space-y-3 p-4">
@@ -214,10 +223,24 @@ export default async function CompaniesPage({
               path="/companies"
               currentQuery={currentQuery}
               myId={me.id}
+              canSave={writable}
             />
           </div>
         )}
       </div>
+
+      {deleted && (
+        <p className="card border-black/10 px-4 py-2.5 text-sm">
+          Deleted {deleted} compan{deleted === '1' ? 'y' : 'ies'}.
+          {kept && (
+            <span className="text-black/55">
+              {' '}
+              {kept} left alone — you can only delete companies you added, unless
+              you are an admin.
+            </span>
+          )}
+        </p>
+      )}
 
       {error && <p className="text-sm text-danger">{error.message}</p>}
 
@@ -225,22 +248,28 @@ export default async function CompaniesPage({
       <div className="card overflow-hidden">
         {companies && companies.length > 0 ? (
           <>
-          <div className="flex items-center justify-between border-b border-black/[0.08] px-5 py-2">
-            <SelectAll formId="bulk" />
-            <span className="text-xs text-black/35">tick companies to assign them in bulk</span>
-          </div>
+          {writable && (
+            <div className="flex items-center justify-between border-b border-black/[0.08] px-5 py-2">
+              <SelectAll formId="bulk" />
+              <span className="text-xs text-black/35">
+                tick companies to assign, re-tier or delete them in bulk
+              </span>
+            </div>
+          )}
           <ul className="divide-y divide-black/[0.06]">
             {companies.map((c) => {
               const contactCount = (c.contacts as unknown as { count: number }[])?.[0]?.count ?? 0;
               return (
                 <li key={c.id} className="flex items-center gap-3 pl-4 hover:bg-black/[0.02]">
-                  <input
-                    type="checkbox"
-                    name="ids"
-                    value={c.id}
-                    aria-label={`Select ${c.name}`}
-                    className="h-4 w-4 shrink-0 rounded border-black/25"
-                  />
+                  {writable && (
+                    <input
+                      type="checkbox"
+                      name="ids"
+                      value={c.id}
+                      aria-label={`Select ${c.name}`}
+                      className="h-4 w-4 shrink-0 rounded border-black/25"
+                    />
+                  )}
                   <Link
                     href={`/companies/${c.id}`}
                     className="flex flex-1 items-center gap-4 py-3 pr-5"
@@ -311,7 +340,7 @@ export default async function CompaniesPage({
         )}
       </div>
 
-      <BulkBar members={members ?? []} formId="bulk" />
+      {writable && <BulkBar members={members ?? []} formId="bulk" isAdmin={me?.role === 'admin'} />}
       </form>
 
       {lastPage > 1 && (

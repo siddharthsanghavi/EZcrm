@@ -19,12 +19,15 @@ export function SavedViews({
   path,
   currentQuery,
   myId,
+  canSave = true,
 }: {
   views: SavedView[];
   path: string;
   /** Already normalised by the page, so it compares like-for-like. */
   currentQuery: string;
   myId: string;
+  /** Viewers follow saved views but do not create or delete them. */
+  canSave?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
@@ -42,7 +45,7 @@ export function SavedViews({
 
   // Nothing saved and nothing filtered is the one case worth hiding entirely,
   // so a fresh install doesn't show an empty control with no way to use it.
-  if (mine.length === 0 && !currentQuery && !open) {
+  if (mine.length === 0 && (!canSave || (!currentQuery && !open))) {
     return null;
   }
 
@@ -69,7 +72,7 @@ export function SavedViews({
               )}
             </Link>
 
-            {view.owner_id === myId && (
+            {canSave && view.owner_id === myId && (
               <form action={deleteSavedView} className="flex">
                 <input type="hidden" name="id" value={view.id} />
                 <button
@@ -87,7 +90,7 @@ export function SavedViews({
         );
       })}
 
-      {currentQuery && !open && (
+      {canSave && currentQuery && !open && (
         <button
           type="button"
           onClick={() => setOpen(true)}
@@ -98,7 +101,7 @@ export function SavedViews({
         </button>
       )}
 
-      {open && (
+      {canSave && open && (
         <form ref={formRef} action={action} className="flex flex-wrap items-center gap-1.5">
           <input type="hidden" name="path" value={path} />
           <input type="hidden" name="query" value={currentQuery} />

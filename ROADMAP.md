@@ -11,17 +11,24 @@ obvious from the code and the *why* will not.
 
 ## Conventions any of these must follow
 
-- **One migration per feature**, `supabase/migrations/NNN_name.sql`, written so
+- **One migration per change**, `supabase/migrations/NNN_name.sql`, written so
   it is safe to re-run (`if not exists`, the `pg_policies` guard pattern), and
-  **mirrored into `supabase/schema.sql`** so a fresh project gets it too.
+  **mirrored into `supabase/schema.sql`** so a fresh project gets it too. Was
+  "per feature": features that share a policy belong in one file, because
+  applying them separately means writing that policy twice — once with the old
+  meaning, once with the new — and whoever runs them out of order silently gets
+  the older one. 013 covers three features for exactly that reason.
 - **Migrations are applied by hand.** Paste the SQL into the Supabase SQL
   editor. Automated writes to the live database are blocked in this setup, so
   do not assume a migration ran — check `information_schema` before trusting it.
 - **Add a `lib/changelog.ts` entry in the same commit** as any user-visible
   change, or `/guide` silently goes stale.
 - **RLS is the security boundary**, not application code. Every new table gets
-  `enable row level security` and policies in the same migration. Deletes stay
-  narrower than writes: `is_admin() or created_by = auth.uid()`.
+  `enable row level security` and policies in the same migration. Reads use
+  `has_access()` ("has a profile"), writes use `is_member()` ("has a profile and
+  may write") — that split is the viewer role, so getting it wrong hands a
+  viewer write access. Deletes stay narrower again: `is_admin() or created_by =
+  auth.uid()`, and for companies, `is_admin()` alone.
 - **Never export a non-async function from `app/actions.ts`.** It is
   `'use server'`, so every export must be a server action — plain helpers go in
   `lib/`. This already bit once; `lib/views.ts` exists because of it.

@@ -16,6 +16,18 @@ export type Change = {
 
 export const CHANGELOG: Change[] = [
   {
+    date: '2026-08-27',
+    title: 'Deletions are tracked, and there is a view-only role',
+    notes: [
+      'Deleting a company is now an admin-only act. Everyone else asks: there is a “Request deletion” box on a company’s Edit screen, and a Request deletion button in the bar at the bottom of the companies list when you tick several.',
+      'Admins decide from the new Deletions page — approve, which deletes the company there and then, or decline with a reason. You can withdraw your own request while it is still waiting.',
+      'Every deletion is recorded: what was deleted, by whom, who asked for it and why. The record survives the company, so “where did that go?” finally has an answer.',
+      'Deleting anything now asks you to confirm first, and says what else goes with it — a company takes its contacts, activity and tasks.',
+      'New Activity page: everything anyone has done, newest first — companies added or edited, statuses moved, owners assigned, contacts added, tasks finished, outreach logged, deletions decided. Filter it by kind, and see a company’s own slice under History on its page. Sign-ins are not in here; they stay under Members.',
+      'New role: a viewer sees everything and can change nothing. Useful for a treasurer, a supervising teacher, or an incoming committee member during handover. Admins pick the role when inviting someone, and can change it later on the Members page.',
+    ],
+  },
+  {
     date: '2026-08-24',
     title: 'Sign in with Google, and editable tiers',
     notes: [

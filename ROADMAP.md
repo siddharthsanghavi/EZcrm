@@ -49,6 +49,22 @@ obvious from the code and the *why* will not.
   Supabase's limit is project-wide and can't be raised without custom SMTP, so
   the app now shows what's left and refuses politely instead of spending a
   request to get a 429 back. Migration `009`.
+- **#11 Activity feed** — went further than planned: rather than unioning three
+  tables in application code, `audit_events` is written by triggers on
+  companies, contacts, tasks, activities, deletion requests, `profiles` and
+  `allowed_emails`, so a write from the SQL editor is logged the same as one
+  from the UI. Imports and exports are logged by the app, since an export is a
+  read and no trigger can see it. `/activity` groups by day and collapses runs.
+  Migrations `013`/`014`.
+- **Company deletion tracking and approvals** — deletes narrowed to admins,
+  everyone else files a request an admin approves or declines on `/deletions`,
+  and every deletion is recorded with a row snapshot that outlives the company.
+  Migration `013`.
+- **Viewer role** — see the reversal note under "Deliberately not doing".
+  Migration `013`.
+- **Contact org chart** — `contacts.reports_to` and `contacts.division`, drawn
+  as a tree on the company page. The database refuses cross-company managers
+  and reporting loops. Migration `015`.
 - **Login tracking** — `login_events`, written from all three sign-in paths.
   Supabase's own audit log is pruned and unreadable without a service-role key.
   Shows links requested against sessions started. Migration `010`.
@@ -189,19 +205,6 @@ with the others.
 
 ---
 
-## #11 Activity feed
-
-**Problem.** Members can't see each other's work, so there's no sense of whether
-anything is happening. Cheap social pressure is most of what makes a shared CRM
-get used.
-
-**Shape.** No schema. An `/activity` page merging `activities`, `status_events`,
-and task completions into one reverse-chronological list, filterable by member.
-Three queries unioned in application code and sorted; at this size that is
-cheaper than a view and far easier to change.
-
----
-
 ## #12 Contact-level engagement
 
 **Problem.** Activities link to a contact but nothing aggregates per person, so
@@ -237,13 +240,99 @@ Resend account, most of the same code.
 
 ---
 
+## Borrowed from the big CRMs — to keep or lose
+
+Surveyed Attio, HubSpot, Pipedrive, Salesforce and Dynamics 365 (August 2026)
+and pulled everything that a five-person club running free-tier Supabase could
+plausibly use. Nothing here is agreed. Each entry says what it is, who does it,
+and — the part that matters — whether it survives contact with this app's
+actual constraints: no service-role key, no paid tier, no full-time admin, and
+users who open the CRM once a week at best.
+
+The recurring reason to cut is not difficulty. It is that most CRM features
+assume a full-time seller with a quota, and this app is used by volunteers
+between lectures.
+
+### Strong candidates
+
+- **Kanban pipeline board** (Pipedrive's core, HubSpot deal board). Drag a
+  company between statuses instead of using the dropdown. `/pipeline` already
+  computes the columns; this is a drag handle and one server action on top of
+  the existing `setCompanyStatus`. Best effort-to-payoff ratio on this list.
+- **Deal rotting** (Pipedrive). A per-stage staleness threshold rather than one
+  global `COLD_AFTER_DAYS`: a week in "contacted" is fine, a month in "in
+  conversation" is not. Small change to `isCold`, no schema.
+- **Duplicate detection with merge** (Dynamics and Salesforce both treat this as
+  core; Dynamics blocks server-side on import). #7 already plans detection on
+  import. The half worth stealing is *merge*: pick a master, keep both sets of
+  contacts and activity. Deduplication after the fact is the actual club
+  problem, since two officers add the same factory a month apart.
+- **Required-fields-by-stage** (Salesforce validation rules, lightweight
+  version). A company cannot reach "committed" without a named contact and a
+  date. One check constraint or one trigger; stops the pipeline chart from
+  lying.
+- **Templates with merge fields** (HubSpot sequences, minus the sending). #6
+  already plans this. Worth confirming it stays a `mailto:` handoff — the moment
+  the app sends mail on your behalf it inherits deliverability, unsubscribes and
+  a compliance surface.
+
+### Worth arguing about
+
+- **Custom fields / flexible objects** (Attio's whole pitch). Genuinely useful —
+  every club wants one field nobody anticipated. But a per-workspace schema
+  means an EAV table or a `jsonb` blob, and both make every query and every RLS
+  policy harder forever. Probably: three spare labelled text columns instead,
+  and admit it.
+- **Reporting dashboard with saved charts** (all five). `/pipeline` is already
+  most of it. The rest is a chart builder, which is a project, for five people
+  who mostly want one number: how many tours are booked.
+- **Lead inbox** (Pipedrive). A staging area before something becomes a real
+  company. The club's equivalent is the CSV import, which already exists. Only
+  worth it if a public tour-request form ever happens — and that is on the
+  do-not-do list for good reasons.
+- **Meeting scheduling links** (HubSpot, Pipedrive). Real value for tour
+  booking, but it is a calendar-availability product, not a CRM feature. Point
+  people at Calendly and put the link in a template.
+- **Mobile app / offline** (all five). Members log tours from a plant floor,
+  which is the strongest argument on this list. The rail already collapses on
+  phones; a PWA with offline queueing is a much bigger commitment than it looks
+  and would be the first thing here that can lose data.
+
+### Cut
+
+- **AI everything** — Attio's research agent, Pipedrive's deal scoring,
+  Copilot for Sales. Prediction needs training data this club will never have:
+  a few hundred companies and maybe forty outcomes a season. A model fitted to
+  that is a confident random number generator.
+- **Forecasting, quotas, territories, commission** (Salesforce, Dynamics). No
+  revenue, no quota, no territories. Nothing to forecast.
+- **Email sending, sequences, open tracking** (HubSpot). Covered under
+  "deliberately not doing" — the OAuth and compliance surface dwarfs the app.
+  Open tracking is also a pixel in someone's inbox, which is a thing to do to
+  strangers, not to a factory manager who agreed to host sixteen students.
+- **Live chat / shared team inbox** (HubSpot, Pipedrive). Nobody is staffing a
+  chat widget.
+- **Approval workflows in general** (Dynamics). The one place approval mattered
+  — deletion — is built. Generalising it would be machinery in search of a use.
+- **Territory-based record access** (Salesforce, Dynamics). The club shares one
+  workspace on purpose; per-record visibility would make "who owns this" a
+  permissions question instead of a social one.
+
+---
+
 ## Deliberately not doing
 
 - **In-app email inbox / Gmail sync.** OAuth scopes, token refresh, and a
   compliance surface wildly out of proportion to five users.
-- **Roles beyond member/admin.** Five people don't need them, and the
-  column-privilege setup on `profiles` is currently correct and fragile — see
-  migration `006`.
+- ~~**Roles beyond member/admin.**~~ **Reversed, and built.** The reasoning was
+  that five people don't need roles. What it missed is that the people who need
+  to *see* the pipeline are not always the five: a treasurer, a supervising
+  teacher, an incoming committee member mid-handover. The alternative was making
+  them members, which is also permission to retier 1,200 companies. `viewer`
+  exists as of migration `013`; `is_member()` now means "may write" and
+  `has_access()` means "has a profile". The fragile part of the original
+  objection was right, though, and is why role changes still go through
+  `set_member_role()`.
 - **A public tour-request form.** Attractive, but an unauthenticated write path
   is the first real hole in "everything is behind RLS". If it ever happens it
   needs its own restricted role, a rate limit, and its own security review.

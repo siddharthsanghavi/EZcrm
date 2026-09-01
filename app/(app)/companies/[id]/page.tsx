@@ -25,6 +25,7 @@ import { OwnerPicker } from '@/components/owner-picker';
 import { TierPicker } from '@/components/tier-picker';
 import { ActivityComposer } from '@/components/activity-composer';
 import { ContactForm } from '@/components/contact-form';
+import { ContactTree } from '@/components/contact-tree';
 import { QuickTaskForm } from '@/components/quick-task-form';
 import { TaskRow } from '@/components/task-row';
 import { ActivityFeed } from '@/components/activity-feed';
@@ -338,24 +339,14 @@ export default async function CompanyPage({
               </span>
             </div>
 
-            {contacts && contacts.length > 0 && (
-              <ul className="divide-y divide-black/5">
-                {contacts.map((p) => (
-                  <li key={p.id} className="px-5 py-3 text-sm">
-                    <div className="font-medium">
-                      {p.first_name} {p.last_name}
-                    </div>
-                    {p.title && <div className="text-xs text-black/50">{p.title}</div>}
-                    {p.email && (
-                      <a href={`mailto:${p.email}`} className="text-xs text-black/60 underline">
-                        {p.email}
-                      </a>
-                    )}
-                    {p.phone && <div className="text-xs text-black/50">{p.phone}</div>}
-                  </li>
-                ))}
-              </ul>
-            )}
+            {/* Grouped by division, then indented by who reports to whom —
+                six names in a flat list say nothing about who to ask when the
+                first one goes quiet. */}
+            <ContactTree
+              contacts={(contacts ?? []) as never}
+              companyId={id}
+              writable={writable}
+            />
 
             {writable && (
               <div className="border-t border-black/10 p-4">

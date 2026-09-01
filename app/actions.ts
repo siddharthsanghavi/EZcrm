@@ -196,6 +196,7 @@ export async function saveContact(formData: FormData) {
     phone: text(formData.get('phone')),
     title: text(formData.get('title')),
     notes: text(formData.get('notes')),
+    division: text(formData.get('division')),
   };
 
   const { error } = id
@@ -206,6 +207,42 @@ export async function saveContact(formData: FormData) {
 
   revalidatePath('/contacts');
   if (record.company_id) revalidatePath(`/companies/${record.company_id}`);
+  return { ok: true };
+}
+
+/**
+ * Where a contact sits in their company: who they report to, and which
+ * division they are in.
+ *
+ * One action for both because they are one decision — "this person is in
+ * Operations, under Marcus" — and two separate saves would let the reporting
+ * line disagree with the division for however long the second one took.
+ *
+ * The database refuses a manager at another company and refuses a reporting
+ * loop (see 015_contact_org_chart.sql). Those come back as an error message
+ * rather than a thrown page, because closing a loop is an easy honest mistake:
+ * two people each make a sensible edit and the second one completes a circle.
+ */
+export async function setContactPlacement(formData: FormData) {
+  const { supabase } = await requireMember();
+  const id = text(formData.get('id'));
+  if (!id) return;
+
+  const manager = text(formData.get('reports_to'));
+
+  const { error } = await supabase
+    .from('contacts')
+    .update({
+      reports_to: manager === id ? null : manager,
+      division: text(formData.get('division')),
+    })
+    .eq('id', id);
+
+  const company_id = text(formData.get('company_id'));
+  if (company_id) revalidatePath(`/companies/${company_id}`);
+  revalidatePath('/contacts');
+
+  if (error) return { error: error.message };
   return { ok: true };
 }
 

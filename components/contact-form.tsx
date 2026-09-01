@@ -41,6 +41,12 @@ export function ContactForm({ companyId, companies, compact = false }: Props) {
       </div>
 
       <input name="title" placeholder="Title / role" className="field" />
+      {/* Only where a company is already chosen: a division without a company
+          is a label with nothing to group. Who they report to is set from the
+          tree on the company page, where the other names are visible. */}
+      {(companyId || companies) && (
+        <input name="division" placeholder="Division (optional)" className="field" />
+      )}
       <input name="email" type="email" placeholder="Email" className="field" />
       <input name="phone" placeholder="Phone" className="field" />
 

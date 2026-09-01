@@ -16,6 +16,16 @@ export type Change = {
 
 export const CHANGELOG: Change[] = [
   {
+    date: '2026-08-29',
+    title: 'Contacts have a shape now',
+    notes: [
+      'A company’s contacts are no longer a flat list. Hover a name and press Place to say who they report to and which division they are in — the list then draws itself as a tree, grouped by division and indented by reporting line.',
+      'Useful when the person who stops replying is not the person who decides. Six names in a list tell you nothing about who to ask next; six names in a tree do.',
+      'Division is free text, so “Operations” or “North Plant” both work. Leave it blank and those contacts sit in a plain list underneath, exactly as before.',
+      'You cannot accidentally create a loop — somebody’s own reports are never offered as their manager, and the database refuses one anyway.',
+    ],
+  },
+  {
     date: '2026-08-27',
     title: 'Deletions are tracked, and there is a view-only role',
     notes: [

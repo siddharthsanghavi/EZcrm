@@ -130,9 +130,64 @@ export type Contact = {
   phone: string | null;
   title: string | null;
   notes: string | null;
+  /** Their manager, another contact at the same company. Null means top level. */
+  reports_to: string | null;
+  /** Free text: "Operations", "North Plant". Null means no division given. */
+  division: string | null;
   last_touch_at: string | null;
   created_at: string;
 };
+
+/** "Priya Nair", or just "Priya" when no surname was entered. */
+export function contactName(c: { first_name: string; last_name: string | null }) {
+  return [c.first_name, c.last_name].filter(Boolean).join(' ');
+}
+
+export type OrgNode<T> = { contact: T; reports: OrgNode<T>[] };
+
+/**
+ * Build the reporting tree for one company.
+ *
+ * Anyone whose manager is missing from `contacts` — deleted, or at another
+ * company — is treated as top level rather than dropped, because a contact you
+ * cannot see is still a contact you can phone. A cycle in the data would
+ * otherwise strand its members invisibly, so anything not reached from a root
+ * is appended at the top too: the database refuses to create cycles, but data
+ * that predates that rule still has to render.
+ */
+export function buildOrgTree<T extends { id: string; reports_to: string | null }>(
+  contacts: T[],
+): OrgNode<T>[] {
+  const byId = new Map(contacts.map((c) => [c.id, c]));
+  const nodes = new Map<string, OrgNode<T>>(contacts.map((c) => [c.id, { contact: c, reports: [] }]));
+  const roots: OrgNode<T>[] = [];
+
+  for (const c of contacts) {
+    const node = nodes.get(c.id)!;
+    const parent = c.reports_to && byId.has(c.reports_to) ? nodes.get(c.reports_to) : undefined;
+    if (parent && parent !== node) parent.reports.push(node);
+    else roots.push(node);
+  }
+
+  const seen = new Set<string>();
+  const walk = (list: OrgNode<T>[]) => {
+    for (const n of list) {
+      if (seen.has(n.contact.id)) continue;
+      seen.add(n.contact.id);
+      walk(n.reports);
+    }
+  };
+  walk(roots);
+
+  for (const c of contacts) {
+    if (!seen.has(c.id)) {
+      seen.add(c.id);
+      roots.push(nodes.get(c.id)!);
+    }
+  }
+
+  return roots;
+}
 
 export type Activity = {
   id: string;

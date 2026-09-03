@@ -600,6 +600,43 @@ export async function saveClubDetails(formData: FormData) {
   return { ok: true };
 }
 
+/**
+ * The club's outreach goal: how much contact it means to make daily, monthly
+ * and yearly. Any of the three can be left blank, which is how a club that only
+ * thinks in months ends up seeing only a monthly bar.
+ *
+ * Admin-only, like the other club-wide settings — a target everyone is measured
+ * against is not something one member should set for the rest.
+ */
+export async function saveOutreachGoal(formData: FormData) {
+  const ctx = await requireAdmin();
+  if (!ctx) return { error: 'Only admins can set the club goal.' };
+
+  const number = (name: string) => {
+    const n = Number.parseInt(text(formData.get(name)) ?? '', 10);
+    // Zero and negatives are not goals, they are a blank field said differently.
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+
+  const value = {
+    metric: formData.get('metric') === 'contacted' ? 'contacted' : 'outreach',
+    daily: number('daily'),
+    monthly: number('monthly'),
+    yearly: number('yearly'),
+  };
+
+  const { error } = await ctx.supabase
+    .from('settings')
+    .upsert({ key: 'goal', value, updated_by: ctx.profile.id, updated_at: new Date().toISOString() },
+            { onConflict: 'key' });
+
+  if (error) return { error: error.message };
+
+  revalidatePath('/settings');
+  revalidatePath('/');
+  return { ok: true };
+}
+
 /** Create or update one email template. Any member may improve a letter. */
 export async function saveTemplate(formData: FormData) {
   const { profile, supabase } = await requireMember();

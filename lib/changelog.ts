@@ -17,6 +17,16 @@ export type Change = {
 export const CHANGELOG: Change[] = [
   {
     date: '2026-09-03',
+    title: 'Set an outreach goal',
+    notes: [
+      'Settings → Club now has an outreach goal: how much contact the club means to make per day, per month and per year. Set any of the three and leave the rest blank — an empty box is simply not tracked.',
+      'Count either every piece of outreach logged, or companies moved out of Prospect for the first time, whichever the committee actually argues about.',
+      'The dashboard shows a bar for each target you set, so “nothing since Tuesday” is visible even in a month that is going well.',
+      'Periods are calendar ones: the day ends at midnight and the year runs January to December, not September to June.',
+    ],
+  },
+  {
+    date: '2026-09-03',
     title: 'Settings, and the email templates are yours to edit',
     notes: [
       'New Settings page, holding the three things that belong to the club rather than to a company: your club details, your email templates, and your members. Members moved here from its own page — the old link still works.',

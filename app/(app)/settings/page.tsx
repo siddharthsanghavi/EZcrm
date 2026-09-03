@@ -1,9 +1,11 @@
 import Link from 'next/link';
 import { ClubDetailsForm } from '@/components/club-details-form';
+import { OutreachGoalForm } from '@/components/outreach-goal-form';
 import { MembersPanel } from '@/components/members-panel';
 import { TemplateEditor } from '@/components/template-editor';
 import { currentProfile } from '@/lib/supabase';
 import { loadClubDetails, loadTemplates } from '@/lib/settings';
+import { loadGoal } from '@/lib/goal';
 import { canWrite, displayName } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -76,10 +78,11 @@ export default async function SettingsPage({
 }
 
 async function ClubSection({ isAdmin }: { isAdmin: boolean }) {
-  const club = await loadClubDetails();
+  const [club, goal] = await Promise.all([loadClubDetails(), loadGoal()]);
   const incomplete = Object.values(club).some((v) => v.startsWith('['));
 
   return (
+    <>
     <section className="card p-5">
       <h2 className="text-sm font-semibold">Club details</h2>
       <p className="mt-1 text-sm text-black/55">
@@ -96,6 +99,17 @@ async function ClubSection({ isAdmin }: { isAdmin: boolean }) {
       <ClubDetailsForm club={club} isAdmin={isAdmin} />
 
     </section>
+
+    <section className="card mt-6 p-5">
+      <h2 className="text-sm font-semibold">Outreach goal</h2>
+      <p className="mt-1 text-sm text-black/55">
+        How much contact the club means to make. Set any of the three — leave a box empty and that
+        one simply is not tracked. Progress shows on the dashboard.
+      </p>
+
+      <OutreachGoalForm goal={goal} isAdmin={isAdmin} />
+    </section>
+    </>
   );
 }
 

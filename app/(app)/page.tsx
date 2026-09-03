@@ -15,6 +15,8 @@ import {
 import { TaskRow } from '@/components/task-row';
 import { ActivityFeed } from '@/components/activity-feed';
 import { loadFeed } from '@/lib/audit';
+import { GoalProgressCard } from '@/components/goal-progress';
+import { loadGoal, loadGoalProgress } from '@/lib/goal';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,6 +40,11 @@ export default async function Dashboard() {
     // supabase/migrations/013_deletions_audit_roles_and_org_chart.sql.
     loadFeed({ limit: 8 }),
   ]);
+
+  // Sequential on purpose: the progress queries depend on which targets are set,
+  // and an unset one is never queried at all.
+  const goal = await loadGoal();
+  const progress = await loadGoalProgress(goal);
 
   const all = companies ?? [];
   const counts = Object.fromEntries(
@@ -180,6 +187,8 @@ export default async function Dashboard() {
           </ul>
         </section>
       )}
+
+      <GoalProgressCard progress={progress} metric={goal.metric} />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="card overflow-hidden">

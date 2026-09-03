@@ -427,3 +427,55 @@ export function displayName(p: { full_name: string | null; email: string } | nul
   if (!p) return 'Unassigned';
   return p.full_name?.trim() || p.email.split('@')[0];
 }
+
+/**
+ * The club's outreach goal.
+ *
+ * Three targets rather than one, because the two questions a committee asks are
+ * different sizes: "did we do anything today?" and "are we on track for the
+ * year?". Each is optional — a club that only thinks in months leaves the other
+ * two blank and sees only that.
+ *
+ * The vocabulary lives here rather than in `lib/goal.ts` because the settings
+ * form and the dashboard card are client components: importing a constant from
+ * a `server-only` module pulls that module into the browser bundle, and the
+ * build says so in a way that takes a minute to read.
+ */
+export type GoalMetric = 'outreach' | 'contacted';
+
+export type OutreachGoal = {
+  metric: GoalMetric;
+  daily: number | null;
+  monthly: number | null;
+  yearly: number | null;
+};
+
+export const GOAL_DEFAULTS: OutreachGoal = {
+  metric: 'outreach',
+  daily: null,
+  monthly: null,
+  yearly: null,
+};
+
+export const GOAL_METRICS: { id: GoalMetric; label: string; means: string }[] = [
+  {
+    id: 'outreach',
+    label: 'Outreach logged',
+    means: 'Every call, email or meeting logged against a company.',
+  },
+  {
+    id: 'contacted',
+    label: 'Companies first contacted',
+    means: 'Companies moved out of Prospect for the first time.',
+  },
+];
+
+export type GoalPeriod = 'daily' | 'monthly' | 'yearly';
+
+export const GOAL_PERIOD_LABELS: Record<GoalPeriod, string> = {
+  daily: 'Today',
+  monthly: 'This month',
+  yearly: 'This year',
+};
+
+export type GoalProgress = { period: GoalPeriod; target: number; done: number };

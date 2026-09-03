@@ -1,33 +1,40 @@
--- Deletion tracking, an activity feed, and a read-only role.
--- Safe to re-run; mirrored into schema.sql for fresh projects.
+-- Deletion tracking, an activity feed, a read-only role, and the contact tree.
+-- Safe to re-run; mirrored into supabase/schema.sql for fresh projects.
 --
--- These three changes arrived together because they are one idea: the app
--- should record what people do to the data, and not everyone should be able to
--- do all of it. They also touch the same policies, so applying them separately
--- would mean writing some policies twice -- once with the old meaning of
--- is_member(), once with the new. This file writes each one once, in an order
--- where nothing refers to something that does not exist yet:
+-- One file, because these are one idea -- the app should record what people do,
+-- and not everyone should be able to do all of it -- and because they touch the
+-- same objects. Applied as three files, `audit_contact()` was written twice and
+-- the `audit_events` vocabulary was altered five times; whoever ran them out of
+-- order silently kept the earlier definition. Here every object is created once,
+-- in its final form, in an order where nothing refers to something that does not
+-- exist yet:
 --
---   1. roles          -- has_access(), is_member(), and what an invite grants
+--   1. roles          -- has_access(), is_member(), and what an invitation grants
 --   2. read policies  -- every existing table moves to has_access()
 --   3. deletions      -- the log, the request queue, admin-only deletes
---   4. activity       -- audit_events and the triggers that fill it
+--   4. org chart      -- contacts.reports_to and contacts.division
+--   5. activity       -- audit_events and every trigger that fills it
 --
 -- WHY EACH PART EXISTS
 --
 -- Deletions. Deleting a company takes its contacts, activity and tasks with it
--- and there is no undo. Any member could do that to anything they had added,
--- and nothing recorded it: a company simply stopped existing, and nobody could
--- tell whether it had been deleted or never entered.
---
--- Activity. "Activity" used to mean one thing -- outreach somebody typed into
--- the composer. Everything else left either a specialised trace nobody reads
--- (status_events) or none at all, so "what happened this week?" had no answer.
+-- and there is no undo. Any member could do that to anything they had added, and
+-- nothing recorded it: a company simply stopped existing, and nobody could tell
+-- whether it had been deleted or never entered.
 --
 -- Roles. The club has people who need to see the pipeline without being trusted
--- to change it: a treasurer, a supervising teacher, an incoming committee
+-- to change it -- a treasurer, a supervising teacher, an incoming committee
 -- member mid-handover. The only way to show them the data was to make them a
 -- member, which is also permission to retier 1,200 companies.
+--
+-- Org chart. Six contacts at a company were six equal names in a list. In
+-- reality one runs the site, two report to her, and three are in another
+-- division -- and that shape is how you know who to ask when the first one goes
+-- quiet.
+--
+-- Activity. "Activity" used to mean one thing: outreach somebody typed into the
+-- composer. Everything else left either a specialised trace nobody reads
+-- (status_events) or none at all, so "what happened this week?" had no answer.
 --
 -- WHAT THIS DOES NOT REPLACE
 --
@@ -37,11 +44,10 @@
 -- readable.
 --
 -- Sign-ins are deliberately absent from audit_events. login_events covers them,
--- it is admin-only because it holds addresses of people who are not members,
--- and a feed of "Ada signed in" forty times a week would bury everything else.
+-- it is admin-only because it holds addresses of people who are not members, and
+-- a feed of "Ada signed in" forty times a week would bury everything else.
 
 -- =========================================================== 1. roles
-
 alter table profiles drop constraint if exists profiles_role_check;
 alter table profiles add constraint profiles_role_check
   check (role in ('viewer', 'member', 'admin'));
@@ -305,7 +311,70 @@ $$;
 revoke execute on function decide_deletion_request(uuid, text) from anon, public;
 grant execute on function decide_deletion_request(uuid, text) to authenticated;
 
--- ===================================================== 4. activity feed
+-- ======================================================= 4. the contact tree
+
+-- `reports_to` is a self-reference, which makes an org chart. `division` is free
+-- text, because a club cannot know in advance whether a company splits into
+-- Operations and Marketing or into North Plant and South Plant, and a fixed list
+-- would be wrong at the first company that does it differently.
+--
+-- on delete set null, not cascade: deleting a manager must orphan their reports
+-- upward, not delete the team.
+alter table contacts add column if not exists reports_to uuid references contacts(id) on delete set null;
+alter table contacts add column if not exists division text;
+
+create index if not exists contacts_reports_to_idx on contacts (reports_to);
+create index if not exists contacts_company_division_idx on contacts (company_id, division);
+
+create or replace function check_contact_reporting()
+returns trigger
+language plpgsql
+security definer set search_path = public, pg_temp
+as $$
+declare
+  cursor_id uuid;
+  manager_company uuid;
+  hops int := 0;
+begin
+  if new.reports_to is null then
+    return new;
+  end if;
+
+  if new.reports_to = new.id then
+    raise exception 'A contact cannot report to themselves';
+  end if;
+
+  select company_id into manager_company from contacts where id = new.reports_to;
+
+  -- Both null (two unattached contacts) is fine; one null is not, and neither
+  -- is a mismatch. `is distinct from` handles the nulls without three branches.
+  if manager_company is distinct from new.company_id then
+    raise exception 'A contact can only report to someone at the same company';
+  end if;
+
+  -- Walk up from the proposed manager. Reaching this contact means the edit
+  -- would close a loop. The hop cap is a backstop: a cycle that already exists
+  -- in the data (from before this migration) would otherwise spin forever.
+  cursor_id := new.reports_to;
+  while cursor_id is not null and hops < 100 loop
+    if cursor_id = new.id then
+      raise exception 'That would create a reporting loop';
+    end if;
+    select reports_to into cursor_id from contacts where id = cursor_id;
+    hops := hops + 1;
+  end loop;
+
+  return new;
+end;
+$$;
+
+revoke execute on function check_contact_reporting() from anon, authenticated, public;
+
+drop trigger if exists contacts_reporting_check on contacts;
+create trigger contacts_reporting_check
+  before insert or update of reports_to, company_id on contacts
+  for each row execute function check_contact_reporting();
+-- ====================================================== 5. activity feed
 
 create table if not exists audit_events (
   id         uuid primary key default uuid_generate_v4(),
@@ -316,10 +385,13 @@ create table if not exists audit_events (
   -- Null when nobody was signed in -- the geocode function, a SQL editor
   -- session. The UI says "automatically" rather than inventing a name.
   actor      uuid references profiles on delete set null,
-  entity     text not null check (entity in ('company', 'contact', 'task', 'activity', 'deletion_request')),
+  entity     text not null check (entity in ('company', 'contact', 'task', 'activity',
+                                            'deletion_request', 'member', 'data')),
   action     text not null check (action in (
                'created', 'updated', 'deleted', 'status_changed', 'assigned',
-               'tier_changed', 'completed', 'reopened', 'requested', 'declined', 'withdrawn')),
+               'tier_changed', 'completed', 'reopened', 'requested', 'declined',
+               'withdrawn', 'invited', 'removed', 'role_changed', 'renamed',
+               'imported', 'exported')),
   entity_id  uuid,
   -- No foreign key, for the same reason company_deletions has none: an event
   -- about a deleted company has to outlive the company.
@@ -465,6 +537,11 @@ $$;
 
 revoke execute on function audit_parent_gone(uuid) from anon, authenticated, public;
 
+------------------------------------------------------------------- the feed
+--
+-- "Edited contact Priya Nair (reports_to)" is
+-- true and unreadable -- a uuid column name where a person's name belongs -- so
+-- reporting and division changes get their own sentences.
 create or replace function audit_contact()
 returns trigger
 language plpgsql
@@ -473,6 +550,7 @@ as $$
 declare
   who text;
   changed text[];
+  manager text;
 begin
   if tg_op = 'DELETE' then
     if audit_parent_gone(old.company_id) then return old; end if;
@@ -487,14 +565,39 @@ begin
   if tg_op = 'INSERT' then
     perform audit_log('contact', 'created', new.id, new.company_id,
                       format('Added contact %s', who),
-                      jsonb_build_object('title', new.title));
-  else
-    changed := audit_changed_fields(to_jsonb(old), to_jsonb(new));
-    if array_length(changed, 1) > 0 then
-      perform audit_log('contact', 'updated', new.id, new.company_id,
-                        format('Edited contact %s (%s)', who, array_to_string(changed, ', ')),
-                        jsonb_build_object('fields', changed));
-    end if;
+                      jsonb_build_object('title', new.title, 'division', new.division));
+    return new;
+  end if;
+
+  if new.reports_to is distinct from old.reports_to then
+    select trim(concat_ws(' ', first_name, last_name)) into manager
+    from contacts where id = new.reports_to;
+
+    perform audit_log('contact', 'updated', new.id, new.company_id,
+      case
+        when manager is null then format('%s no longer reports to anyone', who)
+        else format('%s now reports to %s', who, manager)
+      end,
+      jsonb_build_object('from', old.reports_to, 'to', new.reports_to));
+  end if;
+
+  if new.division is distinct from old.division then
+    perform audit_log('contact', 'updated', new.id, new.company_id,
+      case
+        when new.division is null then format('%s is no longer in a division', who)
+        else format('%s moved to %s', who, new.division)
+      end,
+      jsonb_build_object('from', old.division, 'to', new.division));
+  end if;
+
+  -- Everything else, as one event listing the fields.
+  changed := audit_changed_fields(to_jsonb(old), to_jsonb(new));
+  changed := array_remove(array_remove(changed, 'reports_to'), 'division');
+
+  if array_length(changed, 1) > 0 then
+    perform audit_log('contact', 'updated', new.id, new.company_id,
+                      format('Edited contact %s (%s)', who, array_to_string(changed, ', ')),
+                      jsonb_build_object('fields', changed));
   end if;
 
   return new;
@@ -610,3 +713,120 @@ drop trigger if exists deletion_requests_audit on deletion_requests;
 create trigger deletion_requests_audit
   after insert or update on deletion_requests
   for each row execute function audit_deletion_request();
+
+-- ------------------------------------------------------------------- members
+
+-- The allowlist is the actual gate: an address on it can sign in, one off it
+-- cannot. Both directions are worth a line in the feed.
+create or replace function audit_allowed_email()
+returns trigger
+language plpgsql
+security definer set search_path = public, pg_temp
+as $$
+begin
+  if tg_op = 'INSERT' then
+    perform audit_log('member', 'invited', null, null,
+                      format('Invited %s as %s', new.email, new.role),
+                      jsonb_build_object('email', new.email, 'role', new.role, 'note', new.note));
+  else
+    perform audit_log('member', 'removed', null, null,
+                      format('Removed %s from the allowlist', old.email),
+                      jsonb_build_object('email', old.email));
+  end if;
+
+  return coalesce(new, old);
+end;
+$$;
+
+revoke execute on function audit_allowed_email() from anon, authenticated, public;
+
+drop trigger if exists allowed_emails_audit on allowed_emails;
+create trigger allowed_emails_audit
+  after insert or delete on allowed_emails
+  for each row execute function audit_allowed_email();
+
+create or replace function audit_profile()
+returns trigger
+language plpgsql
+security definer set search_path = public, pg_temp
+as $$
+begin
+  if tg_op = 'INSERT' then
+    -- Not a sign-in: this fires once, when an invited address first becomes a
+    -- real account. The sign-ins themselves stay in login_events.
+    perform audit_log('member', 'created', new.id, null,
+                      format('%s joined as %s', coalesce(new.full_name, new.email), new.role),
+                      jsonb_build_object('email', new.email, 'role', new.role));
+
+  elsif tg_op = 'DELETE' then
+    perform audit_log('member', 'removed', old.id, null,
+                      format('%s lost access', coalesce(old.full_name, old.email)),
+                      jsonb_build_object('email', old.email));
+
+  else
+    if new.role is distinct from old.role then
+      perform audit_log('member', 'role_changed', new.id, null,
+                        format('%s is now %s (was %s)',
+                               coalesce(new.full_name, new.email), new.role, old.role),
+                        jsonb_build_object('from', old.role, 'to', new.role));
+    end if;
+
+    -- Worth recording so a name appearing on old activity can be explained,
+    -- but not worth a line when it is first set from nothing.
+    if new.full_name is distinct from old.full_name and old.full_name is not null then
+      perform audit_log('member', 'renamed', new.id, null,
+                        format('%s is now called %s', old.full_name,
+                               coalesce(new.full_name, new.email)),
+                        jsonb_build_object('from', old.full_name, 'to', new.full_name));
+    end if;
+  end if;
+
+  return coalesce(new, old);
+end;
+$$;
+
+revoke execute on function audit_profile() from anon, authenticated, public;
+
+drop trigger if exists profiles_audit on profiles;
+create trigger profiles_audit
+  after insert or update or delete on profiles
+  for each row execute function audit_profile();
+
+-- --------------------------------------------------------- imports & exports
+
+-- Called by the application, not by a trigger, and this is the one place that
+-- is right: an export is a SELECT, so there is nothing for a trigger to fire
+-- on, and an import is one deliberate act that happens to be a thousand
+-- inserts. The app knows both facts; the table does not.
+--
+-- has_access(), not is_member(): a viewer may export -- reading is what the
+-- role is for -- and the point of the log is that we can see they did.
+-- p_rows is clamped and the label is whitelisted, so a caller cannot write an
+-- arbitrary sentence into the club's audit trail.
+create or replace function log_data_transfer(p_action text, p_table text, p_rows int)
+returns void
+language plpgsql
+security definer set search_path = public, pg_temp
+as $$
+declare verb text;
+begin
+  if not has_access() then
+    raise exception 'Not a member';
+  end if;
+  if p_action not in ('imported', 'exported') then
+    raise exception 'Invalid transfer action';
+  end if;
+  if p_table not in ('companies', 'contacts', 'activities') then
+    raise exception 'Unknown table';
+  end if;
+
+  verb := case p_action when 'imported' then 'Imported' else 'Exported' end;
+
+  perform audit_log('data', p_action, null, null,
+                    format('%s %s %s', verb, greatest(coalesce(p_rows, 0), 0), p_table),
+                    jsonb_build_object('table', p_table, 'rows', greatest(coalesce(p_rows, 0), 0)));
+end;
+$$;
+
+revoke execute on function log_data_transfer(text, text, int) from anon, public;
+grant execute on function log_data_transfer(text, text, int) to authenticated;

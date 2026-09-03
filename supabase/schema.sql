@@ -53,8 +53,9 @@ create trigger on_auth_user_created
 -- recursing into profiles' own RLS policy.
 -- Two questions, deliberately separate. has_access() is "has a profile at all"
 -- and backs every read policy; is_member() is "may write" and backs every write
--- policy. That split is what makes the viewer role a database rule rather than
--- a hidden button. See supabase/migrations/013_deletions_audit_and_roles.sql.
+-- policy. That split is the viewer role, so a new table whose read policy calls
+-- is_member() by habit will quietly deny viewers, and one whose write policy
+-- calls has_access() will quietly let them write.
 create or replace function has_access()
 returns boolean
 language sql
@@ -719,6 +720,42 @@ $$;
 
 grant execute on function record_login_event(text, text, text, text, text) to anon, authenticated;
 
+-- --------------------------------------------------------- map regions
+-- Groups companies into named areas for the map's zoomed-out view. Replace
+-- the rows in the function with your own regions -- see
+-- supabase/migrations/005_map_grouping.sql.
+
+alter table companies add column if not exists area text;
+create index if not exists companies_area_idx on companies (area);
+
+create or replace function ez_area(lat double precision, lon double precision)
+returns text
+language sql
+immutable
+as $$
+  select a.name
+  from (values
+    -- name,                     latitude, longitude
+    ('Metro Atlanta',            33.7550, -84.3900),
+    ('Northwest',                34.6000, -85.0000),
+    ('Northeast',                34.3500, -83.5500),
+    ('Athens Area',              33.9600, -83.3800),
+    ('Augusta / CSRA',           33.4700, -82.0000),
+    ('Columbus / West',          32.4600, -84.9900),
+    ('Middle',                   32.8400, -83.6300),
+    ('Southwest',                31.5800, -84.1600),
+    ('South',                    30.8300, -83.2800),
+    ('Southeast',                31.5000, -82.3000),
+    ('Savannah / Coastal',       32.0800, -81.0900),
+    ('Brunswick / Golden Isles', 31.1500, -81.4900)
+  ) as a(name, alat, alon)
+  where lat is not null and lon is not null
+  -- Planar approximation is plenty at this scale, and keeps the function
+  -- immutable so it can back an index or generated column later.
+  order by ((lat - a.alat) * 111) ^ 2 + ((lon - a.alon) * 93) ^ 2
+  limit 1;
+$$;
+
 -- ------------------------------------------------------- street geocoding
 -- Keeps "set the coordinates" and "recompute the area" from coming apart.
 -- Called only by the `geocode` Edge Function, which validates the point first.
@@ -743,11 +780,12 @@ revoke execute on function set_company_point(uuid, double precision, double prec
   from anon, authenticated, public;
 
 
--- ------------------------------------- deletion log, requests, activity feed
--- Everything the club does to the data is recorded, and deleting a company is
--- a request members file rather than an act they perform. The roles and read
--- policies these rely on are above; this is the part that adds new objects.
--- See supabase/migrations/013_deletions_audit_and_roles.sql for the reasoning.
+-- ------------------- deletions, the contact tree, and the activity feed
+-- Everything the club does to the data is recorded, deleting a company is a
+-- request members file rather than an act they perform, and contacts carry a
+-- reporting line. The roles and read policies these rely on are above; this is
+-- the part that adds new objects. See
+-- supabase/migrations/013_deletions_audit_roles_and_org_chart.sql.
 
 -- Deliberately NO foreign key to companies: the point is to outlive the
 -- company. `snapshot` keeps the row as it was, so an accidental deletion can be
@@ -889,7 +927,70 @@ $$;
 revoke execute on function decide_deletion_request(uuid, text) from anon, public;
 grant execute on function decide_deletion_request(uuid, text) to authenticated;
 
--- ===================================================== 4. activity feed
+-- ======================================================= 4. the contact tree
+
+-- `reports_to` is a self-reference, which makes an org chart. `division` is free
+-- text, because a club cannot know in advance whether a company splits into
+-- Operations and Marketing or into North Plant and South Plant, and a fixed list
+-- would be wrong at the first company that does it differently.
+--
+-- on delete set null, not cascade: deleting a manager must orphan their reports
+-- upward, not delete the team.
+alter table contacts add column if not exists reports_to uuid references contacts(id) on delete set null;
+alter table contacts add column if not exists division text;
+
+create index if not exists contacts_reports_to_idx on contacts (reports_to);
+create index if not exists contacts_company_division_idx on contacts (company_id, division);
+
+create or replace function check_contact_reporting()
+returns trigger
+language plpgsql
+security definer set search_path = public, pg_temp
+as $$
+declare
+  cursor_id uuid;
+  manager_company uuid;
+  hops int := 0;
+begin
+  if new.reports_to is null then
+    return new;
+  end if;
+
+  if new.reports_to = new.id then
+    raise exception 'A contact cannot report to themselves';
+  end if;
+
+  select company_id into manager_company from contacts where id = new.reports_to;
+
+  -- Both null (two unattached contacts) is fine; one null is not, and neither
+  -- is a mismatch. `is distinct from` handles the nulls without three branches.
+  if manager_company is distinct from new.company_id then
+    raise exception 'A contact can only report to someone at the same company';
+  end if;
+
+  -- Walk up from the proposed manager. Reaching this contact means the edit
+  -- would close a loop. The hop cap is a backstop: a cycle that already exists
+  -- in the data (from before this migration) would otherwise spin forever.
+  cursor_id := new.reports_to;
+  while cursor_id is not null and hops < 100 loop
+    if cursor_id = new.id then
+      raise exception 'That would create a reporting loop';
+    end if;
+    select reports_to into cursor_id from contacts where id = cursor_id;
+    hops := hops + 1;
+  end loop;
+
+  return new;
+end;
+$$;
+
+revoke execute on function check_contact_reporting() from anon, authenticated, public;
+
+drop trigger if exists contacts_reporting_check on contacts;
+create trigger contacts_reporting_check
+  before insert or update of reports_to, company_id on contacts
+  for each row execute function check_contact_reporting();
+-- ====================================================== 5. activity feed
 
 create table if not exists audit_events (
   id         uuid primary key default uuid_generate_v4(),
@@ -1052,6 +1153,11 @@ $$;
 
 revoke execute on function audit_parent_gone(uuid) from anon, authenticated, public;
 
+------------------------------------------------------------------- the feed
+--
+-- "Edited contact Priya Nair (reports_to)" is
+-- true and unreadable -- a uuid column name where a person's name belongs -- so
+-- reporting and division changes get their own sentences.
 create or replace function audit_contact()
 returns trigger
 language plpgsql
@@ -1060,6 +1166,7 @@ as $$
 declare
   who text;
   changed text[];
+  manager text;
 begin
   if tg_op = 'DELETE' then
     if audit_parent_gone(old.company_id) then return old; end if;
@@ -1074,14 +1181,39 @@ begin
   if tg_op = 'INSERT' then
     perform audit_log('contact', 'created', new.id, new.company_id,
                       format('Added contact %s', who),
-                      jsonb_build_object('title', new.title));
-  else
-    changed := audit_changed_fields(to_jsonb(old), to_jsonb(new));
-    if array_length(changed, 1) > 0 then
-      perform audit_log('contact', 'updated', new.id, new.company_id,
-                        format('Edited contact %s (%s)', who, array_to_string(changed, ', ')),
-                        jsonb_build_object('fields', changed));
-    end if;
+                      jsonb_build_object('title', new.title, 'division', new.division));
+    return new;
+  end if;
+
+  if new.reports_to is distinct from old.reports_to then
+    select trim(concat_ws(' ', first_name, last_name)) into manager
+    from contacts where id = new.reports_to;
+
+    perform audit_log('contact', 'updated', new.id, new.company_id,
+      case
+        when manager is null then format('%s no longer reports to anyone', who)
+        else format('%s now reports to %s', who, manager)
+      end,
+      jsonb_build_object('from', old.reports_to, 'to', new.reports_to));
+  end if;
+
+  if new.division is distinct from old.division then
+    perform audit_log('contact', 'updated', new.id, new.company_id,
+      case
+        when new.division is null then format('%s is no longer in a division', who)
+        else format('%s moved to %s', who, new.division)
+      end,
+      jsonb_build_object('from', old.division, 'to', new.division));
+  end if;
+
+  -- Everything else, as one event listing the fields.
+  changed := audit_changed_fields(to_jsonb(old), to_jsonb(new));
+  changed := array_remove(array_remove(changed, 'reports_to'), 'division');
+
+  if array_length(changed, 1) > 0 then
+    perform audit_log('contact', 'updated', new.id, new.company_id,
+                      format('Edited contact %s (%s)', who, array_to_string(changed, ', ')),
+                      jsonb_build_object('fields', changed));
   end if;
 
   return new;
@@ -1198,11 +1330,6 @@ create trigger deletion_requests_audit
   after insert or update on deletion_requests
   for each row execute function audit_deletion_request();
 
-
--- ------------------------------------------ membership, imports and exports
--- The rest of the feed: who was let in, who was removed, whose role changed,
--- and every bulk movement of data in or out. See
--- supabase/migrations/014_audit_members_and_transfers.sql for the reasoning.
 -- ------------------------------------------------------------------- members
 
 -- The allowlist is the actual gate: an address on it can sign in, one off it
@@ -1319,138 +1446,6 @@ $$;
 
 revoke execute on function log_data_transfer(text, text, int) from anon, public;
 grant execute on function log_data_transfer(text, text, int) to authenticated;
-
-
--- ------------------------------------------------------------- org chart
--- Who reports to whom, and which division they sit in. The trigger refuses a
--- manager at another company and refuses a reporting loop, because either one
--- makes the tree unrenderable. audit_contact() is redefined here so a
--- reporting change reads as a sentence rather than a column name.
--- See supabase/migrations/015_contact_org_chart.sql.
-
-alter table contacts add column if not exists reports_to uuid references contacts(id) on delete set null;
-alter table contacts add column if not exists division text;
-
-create index if not exists contacts_reports_to_idx on contacts (reports_to);
-create index if not exists contacts_company_division_idx on contacts (company_id, division);
-
-create or replace function check_contact_reporting()
-returns trigger
-language plpgsql
-security definer set search_path = public, pg_temp
-as $$
-declare
-  cursor_id uuid;
-  manager_company uuid;
-  hops int := 0;
-begin
-  if new.reports_to is null then
-    return new;
-  end if;
-
-  if new.reports_to = new.id then
-    raise exception 'A contact cannot report to themselves';
-  end if;
-
-  select company_id into manager_company from contacts where id = new.reports_to;
-
-  -- Both null (two unattached contacts) is fine; one null is not, and neither
-  -- is a mismatch. `is distinct from` handles the nulls without three branches.
-  if manager_company is distinct from new.company_id then
-    raise exception 'A contact can only report to someone at the same company';
-  end if;
-
-  -- Walk up from the proposed manager. Reaching this contact means the edit
-  -- would close a loop. The hop cap is a backstop: a cycle that already exists
-  -- in the data (from before this migration) would otherwise spin forever.
-  cursor_id := new.reports_to;
-  while cursor_id is not null and hops < 100 loop
-    if cursor_id = new.id then
-      raise exception 'That would create a reporting loop';
-    end if;
-    select reports_to into cursor_id from contacts where id = cursor_id;
-    hops := hops + 1;
-  end loop;
-
-  return new;
-end;
-$$;
-
-revoke execute on function check_contact_reporting() from anon, authenticated, public;
-
-drop trigger if exists contacts_reporting_check on contacts;
-create trigger contacts_reporting_check
-  before insert or update of reports_to, company_id on contacts
-  for each row execute function check_contact_reporting();
-
--- ------------------------------------------------------------------- the feed
---
--- Replaces 013's audit_contact(). "Edited contact Priya Nair (reports_to)" is
--- true and unreadable -- a uuid column name where a person's name belongs -- so
--- reporting and division changes get their own sentences.
-create or replace function audit_contact()
-returns trigger
-language plpgsql
-security definer set search_path = public, pg_temp
-as $$
-declare
-  who text;
-  changed text[];
-  manager text;
-begin
-  if tg_op = 'DELETE' then
-    if audit_parent_gone(old.company_id) then return old; end if;
-    who := trim(concat_ws(' ', old.first_name, old.last_name));
-    perform audit_log('contact', 'deleted', old.id, old.company_id,
-                      format('Removed contact %s', who), null);
-    return old;
-  end if;
-
-  who := trim(concat_ws(' ', new.first_name, new.last_name));
-
-  if tg_op = 'INSERT' then
-    perform audit_log('contact', 'created', new.id, new.company_id,
-                      format('Added contact %s', who),
-                      jsonb_build_object('title', new.title, 'division', new.division));
-    return new;
-  end if;
-
-  if new.reports_to is distinct from old.reports_to then
-    select trim(concat_ws(' ', first_name, last_name)) into manager
-    from contacts where id = new.reports_to;
-
-    perform audit_log('contact', 'updated', new.id, new.company_id,
-      case
-        when manager is null then format('%s no longer reports to anyone', who)
-        else format('%s now reports to %s', who, manager)
-      end,
-      jsonb_build_object('from', old.reports_to, 'to', new.reports_to));
-  end if;
-
-  if new.division is distinct from old.division then
-    perform audit_log('contact', 'updated', new.id, new.company_id,
-      case
-        when new.division is null then format('%s is no longer in a division', who)
-        else format('%s moved to %s', who, new.division)
-      end,
-      jsonb_build_object('from', old.division, 'to', new.division));
-  end if;
-
-  -- Everything else, as one event listing the fields.
-  changed := audit_changed_fields(to_jsonb(old), to_jsonb(new));
-  changed := array_remove(array_remove(changed, 'reports_to'), 'division');
-
-  if array_length(changed, 1) > 0 then
-    perform audit_log('contact', 'updated', new.id, new.company_id,
-                      format('Edited contact %s (%s)', who, array_to_string(changed, ', ')),
-                      jsonb_build_object('fields', changed));
-  end if;
-
-  return new;
-end;
-$$;
-
-revoke execute on function audit_contact() from anon, authenticated, public;
 
 -- ---------------------------------------------------------------- bootstrap
 -- Replace with your own address, run it, then sign in once to create your user.

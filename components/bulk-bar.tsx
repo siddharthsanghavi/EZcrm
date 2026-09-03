@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { CLUB_DEFAULTS, type ClubDetails } from '@/lib/cold-email';
 import { STATUS_LABELS, STATUSES, TIERS, displayName, type Profile } from '@/lib/types';
 
 /**
@@ -103,6 +104,39 @@ export function BulkBar({
         </select>
         <button name="op" value="tier" className="btn-ghost py-1.5">
           Set tier
+        </button>
+
+        <span className="mx-1 h-5 w-px bg-black/10" />
+
+        {/* Reads rather than writes, so it sits before the divider that
+            separates the destructive control — and viewers never see this bar
+            at all, which is a lost opportunity the composer on a company page
+            makes up for. */}
+        <button
+          type="button"
+          onClick={() => {
+            const form = document.getElementById(formId) as HTMLFormElement | null;
+            if (!form) return;
+            const ids = [...form.querySelectorAll<HTMLInputElement>('input[name="ids"]:checked')]
+              .map((b) => b.value)
+              .join(',');
+            if (!ids) return;
+
+            // Club details are per-browser; pass whatever this member has set.
+            let club: ClubDetails = CLUB_DEFAULTS;
+            try {
+              const raw = window.localStorage.getItem('ezcrm.club-details');
+              if (raw) club = { ...CLUB_DEFAULTS, ...JSON.parse(raw) };
+            } catch {
+              // Placeholders it is.
+            }
+
+            const params = new URLSearchParams({ ids, ...club });
+            window.location.href = `/api/drafts?${params}`;
+          }}
+          className="btn-ghost py-1.5"
+        >
+          Draft emails
         </button>
 
         {/* Last, and set apart: everything else here is reversible and this is

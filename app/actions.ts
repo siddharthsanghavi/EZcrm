@@ -219,7 +219,7 @@ export async function saveContact(formData: FormData) {
  * line disagree with the division for however long the second one took.
  *
  * The database refuses a manager at another company and refuses a reporting
- * loop (see 015_contact_org_chart.sql). Those come back as an error message
+ * loop (see 013_deletions_audit_roles_and_org_chart.sql). Those come back as an error message
  * rather than a thrown page, because closing a loop is an easy honest mistake:
  * two people each make a sensible edit and the second one completes a circle.
  */
@@ -253,6 +253,37 @@ export async function deleteContact(formData: FormData) {
 
   await supabase.from('contacts').delete().eq('id', id);
   revalidatePath('/contacts');
+}
+
+/**
+ * Record that a cold email went out.
+ *
+ * Called from the composer's "Log as sent", which is a claim by the member
+ * rather than something the app observed — nothing here sends mail, so the app
+ * cannot know. It writes the same kind of `activity` row the composer on the
+ * company page writes, which is what keeps "last touched" honest and stops the
+ * company drifting onto the going-cold list after somebody actually wrote to it.
+ */
+export async function logDraftedEmail(formData: FormData) {
+  const { profile, supabase } = await requireMember();
+
+  const company_id = text(formData.get('company_id'));
+  const subject = text(formData.get('subject'));
+  if (!company_id || !subject) return;
+
+  const { error } = await supabase.from('activities').insert({
+    company_id,
+    contact_id: text(formData.get('contact_id')),
+    type: 'email',
+    subject,
+    occurred_at: new Date().toISOString(),
+    created_by: profile.id,
+  });
+  if (error) return { error: error.message };
+
+  revalidatePath(`/companies/${company_id}`);
+  revalidatePath('/');
+  return { ok: true };
 }
 
 // ----------------------------------------------------------------- activities

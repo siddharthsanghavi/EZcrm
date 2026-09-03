@@ -1,7 +1,7 @@
 /**
  * viewer reads everything and writes nothing; member reads and writes; admin
  * also manages people and is the only role that can delete a company.
- * Enforced by RLS — see supabase/migrations/013_deletions_audit_and_roles.sql —
+ * Enforced by RLS — see supabase/migrations/013_deletions_audit_roles_and_org_chart.sql —
  * so the UI gating below is a courtesy, not the security boundary.
  */
 export type Role = 'viewer' | 'member' | 'admin';

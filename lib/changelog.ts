@@ -16,6 +16,18 @@ export type Change = {
 
 export const CHANGELOG: Change[] = [
   {
+    date: '2026-09-03',
+    title: 'Draft the first email without staring at a blank page',
+    notes: [
+      'Every company page now has a Cold email panel. Pick a template — ask for a tour, ask for sponsorship, nudge after silence, or say hello again as a new committee — and it fills in the company, the contact, what you do and where they are.',
+      'It picks a sensible template for you based on where the company stands: a prospect gets the first approach, one you already contacted gets the nudge, a dormant one gets the reintroduction.',
+      'Open in mail app hands the draft to your own email program, so it sends from you and lands in your Sent folder. Copy does the same for anything else. The app never sends mail itself.',
+      'Log as sent records it as outreach, which keeps the company off the going-cold list. Only you know whether you actually pressed send, so it is a button rather than something we assume.',
+      'Set your club name, school, group size and visit length once under Club details — until you do, drafts carry visible [PLACEHOLDERS] so nothing half-finished goes out by accident.',
+      'Tick several companies in the list and press Draft emails to download one draft per company as a spreadsheet, ready for a mail merge.',
+    ],
+  },
+  {
     date: '2026-08-29',
     title: 'Contacts have a shape now',
     notes: [

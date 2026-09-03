@@ -26,6 +26,7 @@ import { TierPicker } from '@/components/tier-picker';
 import { ActivityComposer } from '@/components/activity-composer';
 import { ContactForm } from '@/components/contact-form';
 import { ContactTree } from '@/components/contact-tree';
+import { ColdEmail } from '@/components/cold-email';
 import { QuickTaskForm } from '@/components/quick-task-form';
 import { TaskRow } from '@/components/task-row';
 import { ActivityFeed } from '@/components/activity-feed';
@@ -281,6 +282,23 @@ export default async function CompanyPage({
               )}
             </section>
           )}
+
+          {/* Drafting is reading — a viewer can prepare an email for somebody
+              else to send, and only "Log as sent" writes. */}
+          <section className="card p-5">
+            <h2 className="text-sm font-semibold">Cold email</h2>
+            <p className="mt-1 text-sm text-black/55">
+              A starting point, not a finished letter. Edit it before you send it.
+            </p>
+            <div className="mt-3">
+              <ColdEmail
+                company={c}
+                contacts={(contacts ?? []) as never}
+                sender={{ name: displayName(me), email: me?.email ?? '' }}
+                canLog={writable}
+              />
+            </div>
+          </section>
 
           {writable && (
             <section className="card p-5">

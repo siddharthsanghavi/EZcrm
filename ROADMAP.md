@@ -49,6 +49,17 @@ obvious from the code and the *why* will not.
   Supabase's limit is project-wide and can't be raised without custom SMTP, so
   the app now shows what's left and refuses politely instead of spending a
   request to get a 429 back. Migration `009`.
+- **#6 Email templates + mailto handoff** — built as a *cold-email composer*
+  rather than the planned `templates` table. Four templates live in
+  `lib/cold-email.ts` as code, not rows: they are the club's standard letters,
+  they change once a year, and a table plus a `/templates` page would have been
+  three files and a permission model to avoid editing one. The picker on a
+  company page merges the CRM's own fields, suggests a template from the
+  company's status, opens `mailto:`, and offers "Log as sent" exactly as
+  planned. Bulk drafting for a ticked selection downloads a mail-merge CSV.
+  Club details (name, school, group size, visit length) live in the member's
+  browser rather than the database — same reasoning, one fewer table. No
+  migration.
 - **#11 Activity feed** — went further than planned: rather than unioning three
   tables in application code, `audit_events` is written by triggers on
   companies, contacts, tasks, activities, deletion requests, `profiles` and
@@ -104,26 +115,6 @@ querying both, capped at ~10 each, and a client palette component mounted in
 
 Use the existing `ilike` approach for short queries and `textSearch` for longer
 ones — the GIN index does nothing for a two-letter prefix.
-
----
-
-## #6 Email templates + mailto handoff
-
-**Problem.** The club sends the same four emails all year. New members rewrite
-them worse. Nobody can see what the good version was.
-
-**Shape.** `templates` table (`name`, `subject`, `body`, `created_by`), member
-read/write, delete limited to author or admin. A `/templates` page to manage
-them, and a picker on the company page that merges `{{first_name}}`,
-`{{company}}`, `{{my_name}}` and opens `mailto:` — so the member's own mail
-client sends it.
-
-**Deliberately not sending mail from the app.** That would mean deliverability,
-an API key with send rights, and the club's domain reputation. `mailto:` keeps
-all of that out of scope and the sent mail in the member's own Sent folder.
-
-Offer a one-click "log this as an activity" after opening the draft, since we
-cannot know whether they actually sent it.
 
 ---
 

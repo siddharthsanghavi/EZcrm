@@ -1002,7 +1002,8 @@ create table if not exists audit_events (
   -- session. The UI says "automatically" rather than inventing a name.
   actor      uuid references profiles on delete set null,
   entity     text not null check (entity in ('company', 'contact', 'task', 'activity',
-                                            'deletion_request', 'member', 'data')),
+                                            'deletion_request', 'member', 'data',
+                                            'template', 'setting')),
   action     text not null check (action in (
                'created', 'updated', 'deleted', 'status_changed', 'assigned',
                'tier_changed', 'completed', 'reopened', 'requested', 'declined',
@@ -1446,6 +1447,166 @@ $$;
 
 revoke execute on function log_data_transfer(text, text, int) from anon, public;
 grant execute on function log_data_transfer(text, text, int) to authenticated;
+
+
+-- ========================================================== 6. settings
+
+-- Key/value rather than a column per setting: these are read as a whole by one
+-- page and never queried across, so a table that needs a migration for every new
+-- preference buys nothing. Members read; only admins change club-wide settings,
+-- because they appear in everybody's outgoing mail.
+create table if not exists settings (
+  key        text primary key,
+  value      jsonb not null,
+  updated_by uuid references profiles on delete set null,
+  updated_at timestamptz not null default now()
+);
+
+alter table settings enable row level security;
+
+do $$
+begin
+  if not exists (select 1 from pg_policies where tablename='settings' and policyname='settings_read') then
+    create policy settings_read on settings for select using (has_access());
+  end if;
+  if not exists (select 1 from pg_policies where tablename='settings' and policyname='settings_write') then
+    create policy settings_write on settings for all using (is_admin()) with check (is_admin());
+  end if;
+end $$;
+
+-- The club's own details, merged into every outgoing draft. Seeded with visible
+-- placeholders on purpose: a draft that says [YOUR CLUB] is obviously
+-- unfinished, whereas one that says "the Engineering Society" is wrong in a way
+-- somebody will send by accident.
+insert into settings (key, value)
+values ('club', jsonb_build_object(
+  'clubName', '[YOUR CLUB]',
+  'school', '[YOUR SCHOOL]',
+  'groupSize', '[GROUP SIZE]',
+  'visitLength', '[LENGTH]'
+))
+on conflict (key) do nothing;
+
+-- The standard letters. Bodies carry {{merge_fields}} filled in per company at
+-- draft time -- lib/cold-email.ts lists them and is the only place that knows
+-- what each one means.
+create table if not exists email_templates (
+  id          uuid primary key default uuid_generate_v4(),
+  slug        text not null unique,
+  name        text not null,
+  -- When to reach for it. Shown under the picker, so it is guidance for the
+  -- member choosing rather than part of the letter.
+  guidance    text,
+  subject     text not null,
+  body        text not null,
+  sort        int not null default 100,
+  -- Offered first for companies at this status. Null means never suggested,
+  -- only chosen by hand.
+  suggest_for text,
+  created_by  uuid references profiles on delete set null,
+  updated_by  uuid references profiles on delete set null,
+  updated_at  timestamptz not null default now(),
+  created_at  timestamptz not null default now()
+);
+
+create index if not exists email_templates_sort_idx on email_templates (sort, name);
+
+alter table email_templates enable row level security;
+
+do $$
+begin
+  if not exists (select 1 from pg_policies where tablename='email_templates' and policyname='email_templates_read') then
+    create policy email_templates_read on email_templates for select using (has_access());
+  end if;
+  -- Any member may improve a letter: they are the ones sending them, and every
+  -- edit lands in the activity feed with a name against it.
+  if not exists (select 1 from pg_policies where tablename='email_templates' and policyname='email_templates_insert') then
+    create policy email_templates_insert on email_templates for insert with check (is_member());
+  end if;
+  if not exists (select 1 from pg_policies where tablename='email_templates' and policyname='email_templates_update') then
+    create policy email_templates_update on email_templates for update using (is_member()) with check (is_member());
+  end if;
+  -- Deleting the club's standard letter is the one that deserves a second thought.
+  if not exists (select 1 from pg_policies where tablename='email_templates' and policyname='email_templates_delete') then
+    create policy email_templates_delete on email_templates for delete using (is_admin() or created_by = auth.uid());
+  end if;
+end $$;
+
+create or replace function touch_email_template()
+returns trigger
+language plpgsql
+security definer set search_path = public, pg_temp
+as $$
+begin
+  new.updated_at := now();
+  new.updated_by := auth.uid();
+  return new;
+end;
+$$;
+
+revoke execute on function touch_email_template() from anon, authenticated, public;
+
+drop trigger if exists email_templates_touch on email_templates;
+create trigger email_templates_touch
+  before update on email_templates
+  for each row execute function touch_email_template();
+
+-- One function for both tables: the shapes differ but the sentence does not,
+-- and two nearly identical trigger functions would drift apart.
+create or replace function audit_settings()
+returns trigger
+language plpgsql
+security definer set search_path = public, pg_temp
+as $$
+begin
+  if tg_table_name = 'settings' then
+    perform audit_log('setting', 'updated', null, null,
+                      format('Changed the %s settings', coalesce(new.key, old.key)), null);
+    return coalesce(new, old);
+  end if;
+
+  if tg_op = 'INSERT' then
+    perform audit_log('template', 'created', new.id, null,
+                      format('Added the "%s" email template', new.name), null);
+  elsif tg_op = 'DELETE' then
+    perform audit_log('template', 'deleted', old.id, null,
+                      format('Deleted the "%s" email template', old.name), null);
+  elsif new.subject is distinct from old.subject or new.body is distinct from old.body
+     or new.name is distinct from old.name or new.guidance is distinct from old.guidance then
+    perform audit_log('template', 'updated', new.id, null,
+                      format('Edited the "%s" email template', new.name), null);
+  end if;
+
+  return coalesce(new, old);
+end;
+$$;
+
+revoke execute on function audit_settings() from anon, authenticated, public;
+
+drop trigger if exists settings_audit on settings;
+create trigger settings_audit
+  after insert or update on settings
+  for each row execute function audit_settings();
+
+drop trigger if exists email_templates_audit on email_templates;
+create trigger email_templates_audit
+  after insert or update or delete on email_templates
+  for each row execute function audit_settings();
+
+-- The four letters the club actually sends, as a starting point. Editing them is
+-- the whole point of putting them in a table, so a re-run never overwrites what
+-- somebody has since changed.
+insert into email_templates (slug, name, guidance, subject, body, sort, suggest_for)
+values
+  ('tour', 'Ask for a tour', 'First approach, when you want to visit.',
+   'Student visit to {{company}}?', E'{{greeting}}\n\nI am {{my_name}}, from {{club}} at {{school}}. We take small groups of students to see how things are actually made and run, because a morning on a real site teaches more than a term of slides.\n\nI am writing to ask whether {{company}} would consider hosting us at {{site}}. We are interested in your work in {{what_they_do}}.\n\nWhat we would ask for:\n\n- About {{group_size}} students, plus one member of staff\n- Roughly {{visit_length}}, on a weekday that suits you\n- Any date in term time — we work around your calendar, not the other way round\n\nWhat we bring: students who have been briefed on site rules, sensible shoes, and questions prepared in advance. We are happy to sign whatever visitor agreement or NDA you use, and to keep phones away entirely if you would prefer.\n\nWould you be open to it? I am glad to answer any questions first.\n\nThank you for your time,\n{{signature}}', 10, 'prospect'),
+  ('sponsorship', 'Ask for sponsorship', 'First approach, when you want support.',
+   '{{club}} at {{school}} — supporting {{group_size}} students', E'{{greeting}}\n\nI am {{my_name}}, writing on behalf of {{club}} at {{school}}. We are a student group of about {{group_size}}, and we spend the year visiting employers and running events for members who are about to enter the industry.\n\nWe are looking for organisations to support that programme. Support can be a contribution towards travel and materials, or something in kind — hosting an event, sending a speaker, covering a coach. We are glad to acknowledge supporters on our materials and at our events, and equally glad not to if you would rather stay quiet about it.\n\nI am contacting {{company}} because of your work in {{what_they_do}}.\n\nCould I send you a short outline of what we do and what support would mean this year?\n\nThank you for reading,\n{{signature}}', 20, null),
+  ('nudge', 'Nudge after silence', 'You wrote, nobody replied, it has been a fortnight.',
+   'Following up: visiting {{company}}', E'{{greeting}}\n\nI wrote a couple of weeks ago about bringing a group of students from {{club}} at {{school}} to {{site}}, and I know a message like mine is easy to lose.\n\nIf a visit is not something you can host, please just say so and I will stop writing — no hard feelings at all, and it is genuinely useful to know.\n\nIf it is a matter of timing, we are flexible: any term-time month works, and we can fit around a quiet week in your calendar.\n\nThanks either way,\n{{signature}}', 30, 'contacted'),
+  ('reintro', 'New year, new committee', 'They hosted before, and the committee has changed.',
+   '{{club}} — new committee, saying hello again', E'{{greeting}}\n\n{{company}} has worked with {{club}} at {{school}} before, and I wanted to reintroduce us: the committee changes every year, and I am this year''s.\n\nWe are planning our visits for the coming year, and yours is on the list of places our members ask about. If you are still open to hosting a group of around {{group_size}} for {{visit_length}}, I would love to find a date. If circumstances have changed, that is completely understood — just let me know and I will take you off our list.\n\nBest wishes,\n{{signature}}', 40, 'dormant')
+on conflict (slug) do nothing;
 
 -- ---------------------------------------------------------------- bootstrap
 -- Replace with your own address, run it, then sign in once to create your user.

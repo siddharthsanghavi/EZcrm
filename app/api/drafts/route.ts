@@ -1,15 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { currentProfile, serverClient } from '@/lib/supabase';
-import {
-  CLUB_DEFAULTS,
-  contactName,
-  draftEmail,
-  draftsToCsv,
-  suggestedTemplate,
-  type ClubDetails,
-  type TemplateId,
-} from '@/lib/cold-email';
-import { TEMPLATES } from '@/lib/cold-email';
+import { contactName, draftEmail, draftsToCsv, suggestTemplate } from '@/lib/cold-email';
+import { loadClubDetails, loadTemplates } from '@/lib/settings';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,17 +29,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'No companies selected.' }, { status: 400 });
   }
 
-  const raw = params.get('template');
-  const template = (TEMPLATES.some((t) => t.id === raw) ? raw : null) as TemplateId | null;
+  // Templates and club details are shared settings now, so both are read here
+  // rather than passed in from whichever browser started the download.
+  const [templates, club] = await Promise.all([loadTemplates(), loadClubDetails()]);
+  if (templates.length === 0) {
+    return NextResponse.json({ error: 'No email templates configured.' }, { status: 400 });
+  }
 
-  // Club details live in the member's browser, so they arrive as query
-  // parameters. Anything missing falls back to the visible placeholder.
-  const club: ClubDetails = {
-    clubName: params.get('clubName') || CLUB_DEFAULTS.clubName,
-    school: params.get('school') || CLUB_DEFAULTS.school,
-    groupSize: params.get('groupSize') || CLUB_DEFAULTS.groupSize,
-    visitLength: params.get('visitLength') || CLUB_DEFAULTS.visitLength,
-  };
+  const wanted = params.get('template');
+  const chosen = templates.find((t) => t.slug === wanted || t.id === wanted) ?? null;
 
   const supabase = await serverClient();
 
@@ -72,7 +62,11 @@ export async function GET(request: NextRequest) {
     const theirs = (contacts ?? []).filter((c) => c.company_id === company.id);
     const contact = theirs.find((c) => c.email) ?? theirs[0] ?? null;
 
-    const draft = draftEmail(template ?? suggestedTemplate(company as never), {
+    // Per company, so a batch of mixed statuses gets the right letter for each:
+    // the prospect is asked, the one already contacted is nudged.
+    const template = chosen ?? suggestTemplate(templates, company as never) ?? templates[0];
+
+    const draft = draftEmail(template, {
       company: company as never,
       contact: contact as never,
       sender,

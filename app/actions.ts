@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { currentProfile, serverClient } from '@/lib/supabase';
 import { ACTIVITY_TYPES, INTERESTS, STATUSES, TIERS } from '@/lib/types';
 import { normalizeViewQuery } from '@/lib/views';
+import { slugify, templatesFromMarkdown } from '@/lib/cold-email';
 
 /** Signed in and on the allowlist. Says nothing about what they may change. */
 async function requireProfile() {
@@ -565,6 +566,133 @@ export async function declineDeletionRequest(formData: FormData) {
 
   revalidatePath('/deletions');
   revalidatePath('/companies');
+}
+
+// ------------------------------------------------------ settings & templates
+
+/**
+ * The club's own details, merged into every outgoing draft.
+ *
+ * Admin-only, and RLS says so too. These four fields appear in mail the whole
+ * club sends, so they are not something one member should be able to change on
+ * everyone else's behalf without being trusted with the rest of the settings.
+ */
+export async function saveClubDetails(formData: FormData) {
+  const ctx = await requireAdmin();
+  if (!ctx) return { error: 'Only admins can change club settings.' };
+
+  const value = {
+    clubName: text(formData.get('clubName')) ?? '',
+    school: text(formData.get('school')) ?? '',
+    groupSize: text(formData.get('groupSize')) ?? '',
+    visitLength: text(formData.get('visitLength')) ?? '',
+  };
+
+  const { error } = await ctx.supabase
+    .from('settings')
+    .upsert({ key: 'club', value, updated_by: ctx.profile.id, updated_at: new Date().toISOString() },
+            { onConflict: 'key' });
+
+  if (error) return { error: error.message };
+
+  revalidatePath('/settings');
+  revalidatePath('/companies');
+  return { ok: true };
+}
+
+/** Create or update one email template. Any member may improve a letter. */
+export async function saveTemplate(formData: FormData) {
+  const { profile, supabase } = await requireMember();
+
+  const id = text(formData.get('id'));
+  const name = text(formData.get('name'));
+  const body = text(formData.get('body'));
+  if (!name) return { error: 'Give the template a name.' };
+  if (!body) return { error: 'A template with no body has nothing to send.' };
+
+  const sort = Number.parseInt(text(formData.get('sort')) ?? '', 10);
+  const suggest = text(formData.get('suggest_for'));
+
+  const record = {
+    name,
+    guidance: text(formData.get('guidance')),
+    subject: text(formData.get('subject')) ?? name,
+    body,
+    sort: Number.isFinite(sort) ? sort : 100,
+    suggest_for: suggest && STATUSES.includes(suggest as never) ? suggest : null,
+  };
+
+  const { error } = id
+    ? await supabase.from('email_templates').update(record).eq('id', id)
+    : await supabase.from('email_templates').insert({
+        ...record,
+        slug: slugify(name),
+        created_by: profile.id,
+        updated_by: profile.id,
+      });
+
+  if (error) {
+    return {
+      error:
+        error.code === '23505'
+          ? 'A template with that name already exists.'
+          : error.message,
+    };
+  }
+
+  revalidatePath('/settings');
+  return { ok: true };
+}
+
+export async function deleteTemplate(formData: FormData) {
+  const { supabase } = await requireMember();
+  const id = text(formData.get('id'));
+  if (!id) return;
+
+  // RLS narrows this to admins and the template's author, and refuses by
+  // matching no rows — so check what actually went rather than assuming.
+  const { data, error } = await supabase.from('email_templates').delete().eq('id', id).select('id');
+  if (error) throw new Error(`Could not delete template: ${error.message}`);
+  if ((data?.length ?? 0) === 0) {
+    throw new Error('Only an admin, or whoever wrote it, can delete a template.');
+  }
+
+  revalidatePath('/settings');
+}
+
+/**
+ * Replace the templates from a Markdown file.
+ *
+ * Matching is by slug: a template in the file that already exists is updated,
+ * one that does not is created, and anything not mentioned is left alone. That
+ * last part is deliberate — an import is how somebody shares two new letters,
+ * not usually how they wipe the club's set, and deleting by omission would make
+ * a truncated paste destructive.
+ */
+export async function importTemplates(formData: FormData) {
+  const { profile, supabase } = await requireMember();
+
+  const markdown = text(formData.get('markdown'));
+  if (!markdown) return { error: 'Paste the Markdown first, or choose a file.' };
+
+  const { templates, errors } = templatesFromMarkdown(markdown);
+  if (templates.length === 0) {
+    return { error: errors[0] ?? 'Nothing in that file looked like a template.' };
+  }
+
+  const { error } = await supabase.from('email_templates').upsert(
+    templates.map((t) => ({ ...t, created_by: profile.id, updated_by: profile.id })),
+    { onConflict: 'slug' },
+  );
+
+  if (error) return { error: error.message };
+
+  revalidatePath('/settings');
+  return {
+    ok: true,
+    imported: templates.length,
+    warnings: errors,
+  };
 }
 
 // ----------------------------------------------------------- saved views

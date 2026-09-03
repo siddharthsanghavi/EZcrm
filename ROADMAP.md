@@ -49,17 +49,15 @@ obvious from the code and the *why* will not.
   Supabase's limit is project-wide and can't be raised without custom SMTP, so
   the app now shows what's left and refuses politely instead of spending a
   request to get a 429 back. Migration `009`.
-- **#6 Email templates + mailto handoff** — built as a *cold-email composer*
-  rather than the planned `templates` table. Four templates live in
-  `lib/cold-email.ts` as code, not rows: they are the club's standard letters,
-  they change once a year, and a table plus a `/templates` page would have been
-  three files and a permission model to avoid editing one. The picker on a
-  company page merges the CRM's own fields, suggests a template from the
-  company's status, opens `mailto:`, and offers "Log as sent" exactly as
-  planned. Bulk drafting for a ticked selection downloads a mail-merge CSV.
-  Club details (name, school, group size, visit length) live in the member's
-  browser rather than the database — same reasoning, one fewer table. No
-  migration.
+- **#6 Email templates + mailto handoff** — built, and then rebuilt. The first
+  version kept the four letters in `lib/cold-email.ts` and the club's details in
+  browser storage, on the grounds that a table nobody edits is a table nobody
+  needs. That was wrong the moment editing them was the point: they are now
+  `email_templates` and `settings` rows, edited on `/settings`, with a preview,
+  merge-field insertion, and Markdown import/export. The composer on a company
+  page still merges the CRM's own fields, suggests a template from the company's
+  status, opens `mailto:` and offers "Log as sent"; bulk drafting for a ticked
+  selection still downloads a mail-merge CSV. Migration `013`.
 - **#11 Activity feed** — went further than planned: rather than unioning three
   tables in application code, `audit_events` is written by triggers on
   companies, contacts, tasks, activities, deletion requests, `profiles` and

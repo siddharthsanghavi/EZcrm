@@ -3,37 +3,33 @@ import { contactName, type Company, type Contact, type Interest } from '@/lib/ty
 /**
  * Cold-email drafting.
  *
- * Templates with merge fields, not a language model. Three reasons, in order of
- * how much they matter:
+ * Templates are rows now, not code: the committee edits them on /settings
+ * without a developer, and everyone sends the same letter. This file is what
+ * turns one of those rows into a draft — the merge fields, the fallbacks when
+ * the CRM does not know something, and the Markdown the templates import and
+ * export as.
  *
- *   1. A club's first email to a factory is a small, formal genre. It has to say
- *      who we are, what we want, how long it takes and what we are not asking
- *      for. A template says that reliably; a model paraphrases it differently
- *      every time and occasionally invents a detail.
- *   2. Nobody can send a promise the club cannot keep — "twenty students, two
- *      hours, a Thursday" is in the template where a human wrote it and another
- *      human can edit it.
- *   3. No API key, no per-send cost, works offline, and the output is the same
- *      today as it was last term.
+ * Still not a language model. A club's first letter to a factory is a small
+ * formal genre that has to promise only what the club can deliver; a template
+ * says that the same way every time, needs no API key, and reads the same in
+ * March as it did in October. What a model would add — variety — is the one
+ * thing this genre does not want.
  *
- * Every draft is a starting point. The composer shows it, the member edits it,
- * and their mail client sends it — this file never touches the network.
+ * Nothing here sends mail. The draft goes to the member's own client.
  */
 
-export type DraftInput = {
-  company: Pick<Company, 'name' | 'type' | 'city' | 'industry' | 'interest' | 'tier' | 'status'>;
-  contact?: Pick<Contact, 'first_name' | 'last_name' | 'title' | 'email'> | null;
-  /** The club member writing, for the sign-off. */
-  sender: { name: string; email: string };
-  club: ClubDetails;
+export type EmailTemplate = {
+  id: string;
+  slug: string;
+  name: string;
+  guidance: string | null;
+  subject: string;
+  body: string;
+  sort: number;
+  /** Offered first for companies at this status. */
+  suggest_for: string | null;
 };
 
-/**
- * The bits that are the same in every email and different for every club. These
- * default to visibly-blank placeholders rather than to invented specifics: a
- * draft that says [YOUR CLUB] is obviously unfinished, whereas one that says
- * "the Engineering Society" is wrong in a way somebody will send by accident.
- */
 export type ClubDetails = {
   clubName: string;
   school: string;
@@ -48,47 +44,39 @@ export const CLUB_DEFAULTS: ClubDetails = {
   visitLength: '[LENGTH]',
 };
 
-export type TemplateId = 'tour' | 'sponsorship' | 'nudge' | 'reintro';
-
-export type Template = {
-  id: TemplateId;
-  name: string;
-  /** When to reach for it, shown under the picker. */
-  when: string;
+export type DraftInput = {
+  company: Pick<Company, 'name' | 'type' | 'city' | 'industry' | 'interest' | 'tier' | 'status'>;
+  contact?: Pick<Contact, 'first_name' | 'last_name' | 'title' | 'email'> | null;
+  /** The club member writing, for the sign-off. */
+  sender: { name: string; email: string };
+  club: ClubDetails;
 };
-
-export const TEMPLATES: Template[] = [
-  { id: 'tour', name: 'Ask for a tour', when: 'First approach, when you want to visit.' },
-  { id: 'sponsorship', name: 'Ask for sponsorship', when: 'First approach, when you want support.' },
-  { id: 'nudge', name: 'Nudge after silence', when: 'You wrote, nobody replied, it has been a fortnight.' },
-  { id: 'reintro', name: 'New year, new committee', when: 'They hosted before, and the committee has changed.' },
-];
 
 export type Draft = { subject: string; body: string };
 
 /**
- * "Hi Priya," when we know what to call them, "Hello," otherwise. An imported
- * row can carry an email address and nothing else, and "Hi undefined," is worse
- * than no name at all — it is the one mistake that tells the reader a machine
- * wrote this and nobody checked.
+ * Every merge field, with what it means and what it falls back to. This list is
+ * the contract between the editor and the drafter: the editor offers exactly
+ * these, and anything else a member types is left alone rather than blanked, so
+ * a stray brace in a letter survives instead of eating the sentence after it.
  */
-const salutation = (c: DraftInput['contact']) => {
-  const first = c?.first_name?.trim();
-  return first ? `Hi ${first},` : 'Hello,';
-};
-
-/** "your Halifax site", or "your site" when we never recorded a city. */
-const site = (city: string | null) => (city ? `your ${city} site` : 'your site');
-
-/**
- * What we think they are, in words a stranger would use about themselves.
- * `type` is the club's own word for the record ("Factory", "Museum"), which is
- * fine to say back to them; `industry` is more specific when we have it.
- */
-const described = (company: DraftInput['company']) => {
-  const what = company.industry ?? company.type;
-  return what ? what.toLowerCase() : 'what you do';
-};
+export const MERGE_FIELDS: { field: string; means: string }[] = [
+  { field: 'greeting', means: '"Hi Priya," — or "Hello," when we have no name' },
+  { field: 'first_name', means: "The contact's first name, blank if unknown" },
+  { field: 'contact_name', means: 'Their full name' },
+  { field: 'contact_title', means: 'Their job title' },
+  { field: 'company', means: "The company's name" },
+  { field: 'site', means: '"your York site" — or "your site" with no city' },
+  { field: 'city', means: 'The city on the record' },
+  { field: 'what_they_do', means: 'Their industry, or the record type' },
+  { field: 'club', means: 'Your club name, from settings' },
+  { field: 'school', means: 'Your school, from settings' },
+  { field: 'group_size', means: 'How many students, from settings' },
+  { field: 'visit_length', means: 'How long a visit takes, from settings' },
+  { field: 'my_name', means: 'Your name' },
+  { field: 'my_email', means: 'Your email address' },
+  { field: 'signature', means: 'Your name, club, school and email, over four lines' },
+];
 
 const wants = (interest: Interest[] | null): 'tour' | 'sponsorship' | 'both' => {
   const list = interest ?? [];
@@ -99,99 +87,187 @@ const wants = (interest: Interest[] | null): 'tour' | 'sponsorship' | 'both' => 
   return 'tour';
 };
 
-/** The template that fits what we recorded wanting from this company. */
-export function suggestedTemplate(company: DraftInput['company']): TemplateId {
-  if (company.status === 'contacted') return 'nudge';
-  if (company.status === 'dormant' || company.status === 'declined') return 'reintro';
-  return wants(company.interest) === 'sponsorship' ? 'sponsorship' : 'tour';
-}
-
-export function draftEmail(template: TemplateId, input: DraftInput): Draft {
+/** The values every {{field}} resolves to for one company and contact. */
+export function mergeValues(input: DraftInput): Record<string, string> {
   const { company, contact, sender, club } = input;
-  const hi = salutation(contact);
-  const sign = `${sender.name}\n${club.clubName}, ${club.school}\n${sender.email}`;
-
-  if (template === 'sponsorship') {
-    return {
-      subject: `${club.clubName} at ${club.school} — supporting ${club.groupSize} students`,
-      body: `${hi}
-
-I am ${sender.name}, writing on behalf of ${club.clubName} at ${club.school}. We are a student group of about ${club.groupSize}, and we spend the year visiting employers and running events for members who are about to enter the industry.
-
-We are looking for organisations to support that programme. Support can be a contribution towards travel and materials, or something in kind — hosting an event, sending a speaker, covering a coach. We are glad to acknowledge supporters on our materials and at our events, and we are equally glad not to if you would rather stay quiet about it.
-
-I am contacting ${company.name} because of your work in ${described(company)}${company.city ? `, and because you are close enough to us that our members can actually get there` : ''}.
-
-Could I send you a short outline of what we do and what support would mean this year?
-
-Thank you for reading,
-${sign}`,
-    };
-  }
-
-  if (template === 'nudge') {
-    return {
-      subject: `Following up: visiting ${company.name}`,
-      body: `${hi}
-
-I wrote a couple of weeks ago about bringing a group of students from ${club.clubName} at ${club.school} to ${site(company.city)}, and I know a message like mine is easy to lose.
-
-If a visit is not something you can host, please just say so and I will stop writing — no hard feelings at all, and it is genuinely useful to know.
-
-If it is a matter of timing, we are flexible: any term-time month works, and we can fit around a quiet week in your calendar.
-
-Thanks either way,
-${sign}`,
-    };
-  }
-
-  if (template === 'reintro') {
-    return {
-      subject: `${club.clubName} — new committee, saying hello again`,
-      body: `${hi}
-
-${company.name} has worked with ${club.clubName} at ${club.school} before, and I wanted to reintroduce us: the committee changes every year, and I am this year's.
-
-We are planning our visits for the coming year, and yours is on the list of places our members ask about. If you are still open to hosting a group of around ${club.groupSize} for ${club.visitLength}, I would love to find a date. If circumstances have changed, that is completely understood — just let me know and I will take you off our list.
-
-Best wishes,
-${sign}`,
-    };
-  }
-
-  const both = wants(company.interest) === 'both';
+  const first = contact?.first_name?.trim() ?? '';
 
   return {
-    subject: `Student visit to ${company.name}?`,
-    body: `${hi}
-
-I am ${sender.name}, from ${club.clubName} at ${club.school}. We take small groups of students to see how things are actually made and run, because a morning on a real site teaches more than a term of slides.
-
-I am writing to ask whether ${company.name} would consider hosting us at ${site(company.city)}. We are interested in your work in ${described(company)}${contact?.title ? `, and you seemed like the right person to ask given your role as ${contact.title}` : ''}.
-
-What we would ask for:
-
-- About ${club.groupSize} students, plus one member of staff
-- Roughly ${club.visitLength}, on a weekday that suits you
-- Any date in term time — we work around your calendar, not the other way round
-
-What we bring: students who have been briefed on site rules, sensible shoes, and questions prepared in advance. We are happy to sign whatever visitor agreement or NDA you use, and to keep phones away entirely if you would prefer.${
-      both
-        ? `\n\nIf a visit is not practical, we would also welcome a conversation about supporting the club in other ways.`
-        : ''
-    }
-
-Would you be open to it? I am glad to answer any questions first.
-
-Thank you for your time,
-${sign}`,
+    // "Hi undefined," is the mistake that tells a reader nobody checked this,
+    // so an unnamed contact gets a plain hello rather than a blank.
+    greeting: first ? `Hi ${first},` : 'Hello,',
+    first_name: first,
+    contact_name: contact ? contactName(contact as never) : '',
+    contact_title: contact?.title ?? '',
+    company: company.name,
+    site: company.city ? `your ${company.city} site` : 'your site',
+    city: company.city ?? '',
+    what_they_do: (company.industry ?? company.type ?? 'what you do').toLowerCase(),
+    club: club.clubName,
+    school: club.school,
+    group_size: club.groupSize,
+    visit_length: club.visitLength,
+    my_name: sender.name,
+    my_email: sender.email,
+    signature: `${sender.name}\n${club.clubName}, ${club.school}\n${sender.email}`,
   };
+}
+
+/** Substitute {{fields}}. Unknown ones are left as they were written. */
+export function render(text: string, values: Record<string, string>) {
+  return text.replace(/\{\{\s*([a-z_]+)\s*\}\}/gi, (whole, name: string) => {
+    const value = values[name.toLowerCase()];
+    return value === undefined ? whole : value;
+  });
+}
+
+export function draftEmail(template: EmailTemplate, input: DraftInput): Draft {
+  const values = mergeValues(input);
+  return {
+    subject: render(template.subject, values).trim(),
+    body: render(template.body, values),
+  };
+}
+
+/** Which template to offer first, from where the company stands. */
+export function suggestTemplate(
+  templates: EmailTemplate[],
+  company: DraftInput['company'],
+): EmailTemplate | undefined {
+  const byStatus = templates.find((t) => t.suggest_for === company.status);
+  if (byStatus) return byStatus;
+
+  const preferred = wants(company.interest) === 'sponsorship' ? 'sponsorship' : 'tour';
+  return templates.find((t) => t.slug === preferred) ?? templates[0];
 }
 
 /** A `mailto:` link the member's own mail client opens, prefilled. */
 export function mailtoLink(to: string | null | undefined, draft: Draft) {
   const params = new URLSearchParams({ subject: draft.subject, body: draft.body });
   return `mailto:${to ?? ''}?${params.toString().replace(/\+/g, '%20')}`;
+}
+
+// --------------------------------------------------------------- markdown
+
+/**
+ * Templates as Markdown, so they can be edited in a real editor, reviewed in a
+ * pull request, or mailed to next year's committee.
+ *
+ * The format is deliberately dull: a `##` heading per template, a short
+ * definition list of its metadata, then the subject and body under their own
+ * headings. It round-trips — export, edit, import, and what you get back is
+ * what you sent — and a human reading it without ever seeing this parser can
+ * still tell what a template is.
+ */
+export function templatesToMarkdown(templates: EmailTemplate[]): string {
+  const out: string[] = [
+    '# Email templates',
+    '',
+    'Exported from EZcrm. Edit and import this file back to update them.',
+    'Merge fields look like {{company}} — see the list at the bottom.',
+    '',
+  ];
+
+  for (const t of [...templates].sort((a, b) => a.sort - b.sort)) {
+    out.push(`## ${t.name}`, '');
+    out.push(`- slug: ${t.slug}`);
+    out.push(`- sort: ${t.sort}`);
+    out.push(`- suggest for: ${t.suggest_for ?? 'none'}`);
+    out.push(`- when to use: ${t.guidance ?? ''}`);
+    out.push('', '### Subject', '', t.subject, '', '### Body', '', t.body, '');
+  }
+
+  out.push('---', '', '## Merge fields', '');
+  for (const f of MERGE_FIELDS) out.push(`- \`{{${f.field}}}\` — ${f.means}`);
+  out.push('');
+
+  return out.join('\n');
+}
+
+export type ParsedTemplate = Omit<EmailTemplate, 'id'> & { id?: string };
+
+/**
+ * Read back what `templatesToMarkdown` wrote.
+ *
+ * Forgiving about what a person might change by hand — heading case, missing
+ * metadata, extra blank lines — and strict about the two things it cannot
+ * guess: a template needs a name and a body. The trailing "Merge fields"
+ * section is documentation, so it is skipped rather than imported as a
+ * template called "Merge fields".
+ */
+export function templatesFromMarkdown(md: string): { templates: ParsedTemplate[]; errors: string[] } {
+  const errors: string[] = [];
+  const templates: ParsedTemplate[] = [];
+
+  // Split on "## " headings, keeping each heading with its section.
+  const sections = md.split(/^##\s+/m).slice(1);
+
+  for (const section of sections) {
+    const lines = section.split(/\r?\n/);
+    const name = lines[0].trim();
+    if (!name || /^merge fields$/i.test(name)) continue;
+
+    const rest = lines.slice(1);
+
+    const meta = (key: string) => {
+      const line = rest.find((l) => new RegExp(`^\\s*[-*]\\s*${key}\\s*:`, 'i').test(l));
+      return line ? line.slice(line.indexOf(':') + 1).trim() : '';
+    };
+
+    /**
+     * Everything under a "### Heading" until the next heading or a horizontal
+     * rule. Walked line by line rather than matched with one regex: a lazy
+     * quantifier terminated by `$` under the `m` flag stops at the first line
+     * break, which silently produced empty bodies and skipped every template.
+     */
+    const part = (heading: string) => {
+      const start = rest.findIndex((l) => new RegExp(`^###\\s+${heading}\\s*$`, 'i').test(l));
+      if (start === -1) return '';
+
+      const out: string[] = [];
+      for (const line of rest.slice(start + 1)) {
+        if (/^###\s/.test(line) || /^---\s*$/.test(line)) break;
+        out.push(line);
+      }
+
+      return out.join('\n').replace(/^\n+/, '').replace(/\n+$/, '');
+    };
+
+    const body = part('Body');
+    if (!body) {
+      errors.push(`"${name}" has no ### Body section, so it was skipped.`);
+      continue;
+    }
+
+    const suggest = meta('suggest for').toLowerCase();
+    const sort = Number.parseInt(meta('sort'), 10);
+
+    templates.push({
+      slug: meta('slug') || slugify(name),
+      name,
+      guidance: meta('when to use') || null,
+      subject: part('Subject') || name,
+      body,
+      sort: Number.isFinite(sort) ? sort : 100,
+      suggest_for: !suggest || suggest === 'none' ? null : suggest,
+    });
+  }
+
+  if (templates.length === 0 && errors.length === 0) {
+    errors.push('No templates found. Each one needs a "## Name" heading and a "### Body" section.');
+  }
+
+  return { templates, errors };
+}
+
+export function slugify(name: string) {
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 40) || 'template'
+  );
 }
 
 /**

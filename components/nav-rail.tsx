@@ -9,6 +9,7 @@ export type RailCounts = {
   companies: number | null;
   contacts: number | null;
   tasks: number | null;
+  /** Signed-in members, shown against Settings, where they are managed. */
   members: number | null;
   deletions: number | null;
 };
@@ -22,7 +23,7 @@ const NAV = [
   { href: '/tasks', label: 'Tasks', key: 'tasks' },
   { href: '/activity', label: 'Activity', key: null },
   { href: '/import', label: 'Import / Export', key: null },
-  { href: '/members', label: 'Members', key: 'members' },
+  { href: '/settings', label: 'Settings', key: 'members' },
   // Sits by Members because it is the other "who is allowed to do what" page.
   // The count is pending requests only — a badge for a log nobody has to act on
   // would be a permanent, meaningless number.

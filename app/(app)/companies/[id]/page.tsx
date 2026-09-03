@@ -31,6 +31,7 @@ import { QuickTaskForm } from '@/components/quick-task-form';
 import { TaskRow } from '@/components/task-row';
 import { ActivityFeed } from '@/components/activity-feed';
 import { loadFeed } from '@/lib/audit';
+import { loadClubDetails, loadTemplates } from '@/lib/settings';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,6 +57,8 @@ export default async function CompanyPage({
     history,
     { data: request },
     me,
+    templates,
+    club,
   ] = await Promise.all([
       supabase.from('contacts').select('*').eq('company_id', id).order('created_at'),
     supabase
@@ -80,6 +83,8 @@ export default async function CompanyPage({
       .eq('status', 'pending')
       .maybeSingle(),
     currentProfile(),
+    loadTemplates(),
+    loadClubDetails(),
   ]);
 
   const today = new Date().toISOString().slice(0, 10);
@@ -295,6 +300,8 @@ export default async function CompanyPage({
                 company={c}
                 contacts={(contacts ?? []) as never}
                 sender={{ name: displayName(me), email: me?.email ?? '' }}
+                templates={templates}
+                club={club}
                 canLog={writable}
               />
             </div>

@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { CLUB_DEFAULTS, type ClubDetails } from '@/lib/cold-email';
 import { STATUS_LABELS, STATUSES, TIERS, displayName, type Profile } from '@/lib/types';
 
 /**
@@ -122,17 +121,9 @@ export function BulkBar({
               .join(',');
             if (!ids) return;
 
-            // Club details are per-browser; pass whatever this member has set.
-            let club: ClubDetails = CLUB_DEFAULTS;
-            try {
-              const raw = window.localStorage.getItem('ezcrm.club-details');
-              if (raw) club = { ...CLUB_DEFAULTS, ...JSON.parse(raw) };
-            } catch {
-              // Placeholders it is.
-            }
-
-            const params = new URLSearchParams({ ids, ...club });
-            window.location.href = `/api/drafts?${params}`;
+            // Templates and club details are read server-side from settings,
+            // so the only thing this has to send is which companies.
+            window.location.href = `/api/drafts?ids=${encodeURIComponent(ids)}`;
           }}
           className="btn-ghost py-1.5"
         >

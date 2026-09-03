@@ -17,6 +17,17 @@ export type Change = {
 export const CHANGELOG: Change[] = [
   {
     date: '2026-09-03',
+    title: 'Settings, and the email templates are yours to edit',
+    notes: [
+      'New Settings page, holding the three things that belong to the club rather than to a company: your club details, your email templates, and your members. Members moved here from its own page — the old link still works.',
+      'Club details — your club name, school, group size and how long a visit takes — are set once by an admin and merged into every draft. No more retyping them, and no more placeholders in outgoing mail.',
+      'Email templates are now edited in the app instead of living in the code. Change the wording, add your own, set which one is suggested for a prospect versus somebody who has gone quiet. Any member can improve a letter; every edit shows up in Activity with a name against it.',
+      'The editor has an insert button for each merge field — click {{company}} and it lands where your cursor is — and a live preview against a made-up company, so you see what the recipient sees before saving.',
+      'Export every template to one Markdown file, edit it anywhere, and import it back. Import matches on each template’s slug: existing ones are updated, new ones added, and anything the file does not mention is left alone.',
+    ],
+  },
+  {
+    date: '2026-09-03',
     title: 'Draft the first email without staring at a blank page',
     notes: [
       'Every company page now has a Cold email panel. Pick a template — ask for a tour, ask for sponsorship, nudge after silence, or say hello again as a new committee — and it fills in the company, the contact, what you do and where they are.',

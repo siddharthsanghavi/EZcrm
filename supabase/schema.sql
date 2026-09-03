@@ -1017,6 +1017,23 @@ create table if not exists audit_events (
   details    jsonb
 );
 
+-- `create table if not exists` above does nothing when the table is already
+-- there, which means a database created before 'template' and 'setting' existed
+-- keeps the older CHECK and refuses those rows at runtime -- a trigger failing
+-- on a settings change, long after this file appeared to succeed. Reconciling
+-- explicitly is the only way an upgrade and a fresh install end up identical.
+alter table audit_events drop constraint if exists audit_events_entity_check;
+alter table audit_events add constraint audit_events_entity_check
+  check (entity in ('company', 'contact', 'task', 'activity',
+                    'deletion_request', 'member', 'data', 'template', 'setting'));
+
+alter table audit_events drop constraint if exists audit_events_action_check;
+alter table audit_events add constraint audit_events_action_check
+  check (action in ('created', 'updated', 'deleted', 'status_changed', 'assigned',
+                    'tier_changed', 'completed', 'reopened', 'requested', 'declined',
+                    'withdrawn', 'invited', 'removed', 'role_changed', 'renamed',
+                    'imported', 'exported'));
+
 create index if not exists audit_events_recent_idx  on audit_events (at desc);
 create index if not exists audit_events_company_idx on audit_events (company_id, at desc);
 create index if not exists audit_events_actor_idx   on audit_events (actor, at desc);

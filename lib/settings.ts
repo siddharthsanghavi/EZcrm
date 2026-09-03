@@ -18,6 +18,35 @@ export async function loadClubDetails(): Promise<ClubDetails> {
   return { ...CLUB_DEFAULTS, ...((data?.value ?? {}) as Partial<ClubDetails>) };
 }
 
+/**
+ * The club's public identity, for /privacy and /terms.
+ *
+ * Those pages are reachable without a session — Google's OAuth reviewer fetches
+ * them — so the `settings` row they read is the one key exposed to anon by a
+ * policy of its own. That is also why nothing private may live in it.
+ *
+ * Every field falls back to something a stranger can still act on, because
+ * these pages have to say something true before anyone has filled the settings
+ * in, and a privacy policy naming "[YOUR CLUB]" is worse than one naming none.
+ */
+export async function loadPublicClub(): Promise<{
+  club: string;
+  school: string | null;
+  contactEmail: string | null;
+}> {
+  const supabase = await serverClient();
+  const { data } = await supabase.from('settings').select('value').eq('key', 'club').maybeSingle();
+
+  const value = (data?.value ?? {}) as Record<string, string>;
+  const real = (v?: string) => (v && !v.startsWith('[') ? v.trim() : '');
+
+  return {
+    club: real(value.clubName) || 'a student club',
+    school: real(value.school) || null,
+    contactEmail: real(value.contactEmail) || null,
+  };
+}
+
 export async function loadTemplates(): Promise<EmailTemplate[]> {
   const supabase = await serverClient();
   const { data } = await supabase

@@ -167,7 +167,7 @@ lighter, check it.
 These contain one club's specifics — including a real person's email address.
 **Rewrite them before you deploy anywhere public.**
 
-- **`app/privacy/page.tsx`** and **`app/terms/page.tsx`** — mention Kennesaw
+- **`app/privacy/page.tsx`** and **`app/terms/page.tsx`** — mention Riverbend
   State University and carry a contact address. They are also written to be
   *true*: if you change what the app stores or who it shares with, change these
   to match. They are required if you set up Google sign-in.

@@ -1491,6 +1491,21 @@ begin
   end if;
 end $$;
 
+-- /privacy and /terms are public -- Google's OAuth reviewer fetches them, and a
+-- policy behind a login is worth nothing to the person it is written for. They
+-- name the club and give a contact address, and both now come from this row
+-- rather than from the source, so a public repository carries neither.
+--
+-- Only this one key is readable without a session. NOTHING PRIVATE GOES IN THE
+-- 'club' ROW: it is, by design, world-readable. Any other key stays behind
+-- has_access() through the policy above.
+do $$
+begin
+  if not exists (select 1 from pg_policies where tablename='settings' and policyname='settings_public_club') then
+    create policy settings_public_club on settings for select using (key = 'club');
+  end if;
+end $$;
+
 -- The club's own details, merged into every outgoing draft. Seeded with visible
 -- placeholders on purpose: a draft that says [YOUR CLUB] is obviously
 -- unfinished, whereas one that says "the Engineering Society" is wrong in a way
@@ -1500,7 +1515,9 @@ values ('club', jsonb_build_object(
   'clubName', '[YOUR CLUB]',
   'school', '[YOUR SCHOOL]',
   'groupSize', '[GROUP SIZE]',
-  'visitLength', '[LENGTH]'
+  'visitLength', '[LENGTH]',
+  -- Shown on /privacy and /terms as the address to write to. Public.
+  'contactEmail', ''
 ))
 on conflict (key) do nothing;
 

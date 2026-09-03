@@ -66,7 +66,7 @@ function Marker({ n, className = '' }: { n: number; className?: string }) {
 export function FigureClaim() {
   const rows = [
     { name: 'Piedmont Tool & Die', meta: 'Machine Shop · Marietta', tier: 'Tier 1', tick: true, delay: '' },
-    { name: 'Northside Fabrication', meta: 'Integrator · Kennesaw', tier: 'Tier 1', tick: true, delay: 'fig-d2' },
+    { name: 'Northside Fabrication', meta: 'Integrator · Riverbend', tier: 'Tier 1', tick: true, delay: 'fig-d2' },
     { name: 'Etowah Machine', meta: 'Machine Shop · Cartersville', tier: 'Tier 2', tick: false, delay: '' },
   ];
 

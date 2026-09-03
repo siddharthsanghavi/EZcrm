@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
+import { loadPublicClub } from '@/lib/settings';
 
 export const metadata: Metadata = {
   title: 'Privacy — EZcrm',
@@ -9,7 +10,11 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
 };
 
-export const dynamic = 'force-static';
+// Was force-static. The club's name and contact address now come from the
+// database, so this renders per request: prerendering would bake in whatever
+// the settings said on the day of the deploy, and a stale contact address on a
+// privacy policy is the one line here that has to be right.
+export const dynamic = 'force-dynamic';
 
 /**
  * Public privacy policy.
@@ -19,7 +24,9 @@ export const dynamic = 'force-static';
  * actually describes how Google user data is handled, and members deserve a
  * straight answer too. If the app's behaviour changes, change this.
  */
-export default function PrivacyPage() {
+export default async function PrivacyPage() {
+  const { club, school, contactEmail } = await loadPublicClub();
+
   return (
     <main className="mx-auto max-w-2xl px-6 py-14">
       <Link href="/login" className="text-sm text-black/50 hover:text-ink">
@@ -122,12 +129,19 @@ export default function PrivacyPage() {
 
       <Section title="Contact">
         <p>
-          This app is run by a student club at Kennesaw State University. Reach the administrator
-          at{' '}
-          <a href="mailto:siddharth.sanghavi.360@gmail.com" className="underline">
-            siddharth.sanghavi.360@gmail.com
-          </a>
-          .
+          This app is run by {club}
+          {school ? ` at ${school}` : ''}.{' '}
+          {contactEmail ? (
+            <>
+              Reach the administrator at{' '}
+              <a href={`mailto:${contactEmail}`} className="underline">
+                {contactEmail}
+              </a>
+              .
+            </>
+          ) : (
+            <>Reach the administrator through whoever gave you access to this app.</>
+          )}
         </p>
       </Section>
 

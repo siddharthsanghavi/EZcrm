@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
+import { loadPublicClub } from '@/lib/settings';
 
 export const metadata: Metadata = {
   title: 'Terms of use — EZcrm',
@@ -7,10 +8,16 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
 };
 
-export const dynamic = 'force-static';
+// Was force-static. The club's name and contact address now come from the
+// database, so this renders per request: prerendering would bake in whatever
+// the settings said on the day of the deploy, and a stale contact address on a
+// privacy policy is the one line here that has to be right.
+export const dynamic = 'force-dynamic';
 
 /** Public terms. Short on purpose — this is an internal club tool, not a product. */
-export default function TermsPage() {
+export default async function TermsPage() {
+  const { club, school, contactEmail } = await loadPublicClub();
+
   return (
     <main className="mx-auto max-w-2xl px-6 py-14">
       <Link href="/login" className="text-sm text-black/50 hover:text-ink">
@@ -24,9 +31,10 @@ export default function TermsPage() {
 
       <Section title="What this is">
         <p>
-          EZcrm is a private tool for one student club at Kennesaw State University, used to track
-          outreach to companies for plant tours and sponsorship. It is not a commercial product,
-          nothing is charged for it, and it is not offered to the general public.
+          EZcrm is a private tool for {club}
+          {school ? ` at ${school}` : ''}, used to track outreach to companies for plant tours and
+          sponsorship. It is not a commercial product, nothing is charged for it, and it is not
+          offered to the general public.
         </p>
       </Section>
 
@@ -73,11 +81,17 @@ export default function TermsPage() {
 
       <Section title="Contact">
         <p>
-          Questions go to{' '}
-          <a href="mailto:siddharth.sanghavi.360@gmail.com" className="underline">
-            siddharth.sanghavi.360@gmail.com
-          </a>
-          .
+          {contactEmail ? (
+            <>
+              Questions go to{' '}
+              <a href={`mailto:${contactEmail}`} className="underline">
+                {contactEmail}
+              </a>
+              .
+            </>
+          ) : (
+            <>Questions go to whoever administers this club&apos;s copy of the app.</>
+          )}
         </p>
       </Section>
 

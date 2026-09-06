@@ -4,7 +4,7 @@ import { currentProfile, serverClient } from '@/lib/supabase';
 import {
   deleteCompany,
   requestCompanyDeletion,
-  setCompanyStatus,
+  setCompanyArchived,
   withdrawDeletionRequest,
 } from '@/app/actions';
 import { ConfirmButton } from '@/components/confirm-button';
@@ -16,6 +16,7 @@ import {
   canWrite,
   displayName,
   isCold,
+  money,
   sinceLabel,
   type Company,
   type Status,
@@ -27,11 +28,13 @@ import { ActivityComposer } from '@/components/activity-composer';
 import { ContactForm } from '@/components/contact-form';
 import { ContactTree } from '@/components/contact-tree';
 import { ColdEmail } from '@/components/cold-email';
+import { Attachments, type AttachmentRow } from '@/components/attachments';
+import { StatusPicker } from '@/components/status-picker';
 import { QuickTaskForm } from '@/components/quick-task-form';
 import { TaskRow } from '@/components/task-row';
 import { ActivityFeed } from '@/components/activity-feed';
 import { loadFeed } from '@/lib/audit';
-import { loadClubDetails, loadTemplates } from '@/lib/settings';
+import { loadClubDetails, loadRottingRules, loadTemplates } from '@/lib/settings';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,6 +62,8 @@ export default async function CompanyPage({
     me,
     templates,
     club,
+    rotting,
+    { data: files },
   ] = await Promise.all([
       supabase.from('contacts').select('*').eq('company_id', id).order('created_at'),
     supabase
@@ -85,6 +90,12 @@ export default async function CompanyPage({
     currentProfile(),
     loadTemplates(),
     loadClubDetails(),
+    loadRottingRules(),
+    supabase
+      .from('attachments')
+      .select('*, profiles(full_name, email)')
+      .eq('company_id', id)
+      .order('created_at', { ascending: false }),
   ]);
 
   const today = new Date().toISOString().slice(0, 10);
@@ -105,6 +116,20 @@ export default async function CompanyPage({
         </Link>
         <h1 className="text-2xl font-semibold tracking-tight">Edit company</h1>
         <CompanyForm company={c} />
+
+        {!c.archived_at && (
+          <form action={setCompanyArchived} className="card p-5">
+            <input type="hidden" name="id" value={id} />
+            <input type="hidden" name="archived" value="true" />
+            <h2 className="text-sm font-semibold">Archive this company</h2>
+            <p className="mt-1 text-sm text-black/55">
+              Takes it off the working list and out of the pipeline, keeping the contacts, the
+              history and the files. Reversible from the company&apos;s own page. This is what you
+              want at the end of a season — deleting is not.
+            </p>
+            <button className="btn mt-3 border border-black/15">Archive {c.name}</button>
+          </form>
+        )}
 
         {isAdmin ? (
           <form action={deleteCompany} className="card border-danger/30 p-5">
@@ -196,6 +221,13 @@ export default async function CompanyPage({
             <div className="mt-1 text-sm text-black/45">
               {[c.type, [c.city, c.region].filter(Boolean).join(' · ')].filter(Boolean).join(' — ')}
               {c.employees ? ` · ~${c.employees.toLocaleString()} employees` : ''}
+              {c.amount !== null && (
+                <>
+                  {' · '}
+                  <span className="font-medium text-black/70">{money(c.amount)}</span>
+                  {c.close_date && ` by ${new Date(c.close_date).toLocaleDateString()}`}
+                </>
+              )}
             </div>
 
             <div className="mt-1 text-sm">
@@ -206,7 +238,7 @@ export default async function CompanyPage({
               <span className="text-black/45"> · last touched </span>
               <span
                 className={
-                  isCold(c.status, c.last_touch_at) ? 'font-medium text-warn' : 'font-medium'
+                  isCold(c.status, c.last_touch_at, rotting) ? 'font-medium text-warn' : 'font-medium'
                 }
               >
                 {sinceLabel(c.last_touch_at)}
@@ -216,22 +248,7 @@ export default async function CompanyPage({
 
           {writable ? (
             <div className="flex items-center gap-2">
-              <form action={setCompanyStatus} className="flex items-center gap-2">
-                <input type="hidden" name="id" value={id} />
-                <select
-                  name="status"
-                  defaultValue={c.status}
-                  className="field w-44 py-1.5"
-                  aria-label="Status"
-                >
-                  {STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {STATUS_LABELS[s]}
-                    </option>
-                  ))}
-                </select>
-                <button className="btn-ghost py-1.5">Update</button>
-              </form>
+              <StatusPicker companyId={id} status={c.status} />
               <OwnerPicker companyId={id} ownerId={c.owner_id} members={members ?? []} />
               <TierPicker companyId={id} tier={c.tier} />
               <Link href={`/companies/${id}?edit=1`} className="btn-ghost py-1.5">
@@ -246,6 +263,22 @@ export default async function CompanyPage({
           )}
         </div>
       </div>
+
+      {c.archived_at && (
+        <div className="card flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-sm">
+          <span>
+            <span className="font-medium">Archived</span>
+            <span className="text-black/55"> — off the working list since {new Date(c.archived_at).toLocaleDateString()}. Nothing was deleted.</span>
+          </span>
+          {writable && (
+            <form action={setCompanyArchived}>
+              <input type="hidden" name="id" value={id} />
+              <input type="hidden" name="archived" value="false" />
+              <button className="btn-ghost py-1.5">Restore</button>
+            </form>
+          )}
+        </div>
+      )}
 
       {/* Anyone opening this company should know it is on its way out before
           they spend twenty minutes logging a call against it. */}
@@ -396,6 +429,17 @@ export default async function CompanyPage({
                 <QuickTaskForm companyId={id} />
               </div>
             )}
+          </section>
+
+          <section className="card overflow-hidden">
+            <h2 className="border-b border-black/10 px-5 py-3 text-sm font-semibold">Files</h2>
+            <div className="px-5 py-3">
+              <Attachments
+                companyId={id}
+                files={(files ?? []) as unknown as AttachmentRow[]}
+                writable={writable}
+              />
+            </div>
           </section>
 
           {/* Was "Status history", which only ever showed status. Everything

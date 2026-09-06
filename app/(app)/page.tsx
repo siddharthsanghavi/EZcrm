@@ -17,6 +17,7 @@ import { ActivityFeed } from '@/components/activity-feed';
 import { loadFeed } from '@/lib/audit';
 import { GoalProgressCard } from '@/components/goal-progress';
 import { loadGoal, loadGoalProgress } from '@/lib/goal';
+import { loadRottingRules } from '@/lib/settings';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,6 +44,7 @@ export default async function Dashboard() {
 
   // Sequential on purpose: the progress queries depend on which targets are set,
   // and an unset one is never queried at all.
+  const rotting = await loadRottingRules();
   const goal = await loadGoal();
   const progress = await loadGoalProgress(goal);
 
@@ -57,7 +59,7 @@ export default async function Dashboard() {
   // is the thing most likely to quietly die, so surface it above everything
   // else. Already ordered oldest-touch-first by the query, so the top of this
   // list is the worst of it.
-  const cold = all.filter((c) => isCold(c.status as Status, c.last_touch_at));
+  const cold = all.filter((c) => isCold(c.status as Status, c.last_touch_at, rotting));
   // Never-touched has no day count, so it anchors the bar at full length.
   const worstCold = Math.max(0, ...cold.map((c) => daysSince(c.last_touch_at) ?? Infinity).filter(Number.isFinite));
 

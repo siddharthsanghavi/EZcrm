@@ -56,6 +56,14 @@ const text = (v: FormDataEntryValue | null) => {
 const oneOf = <T extends string>(v: FormDataEntryValue | null, allowed: readonly T[], fallback: T) =>
   allowed.includes(v as T) ? (v as T) : fallback;
 
+/** A pledged amount, or null. Strips whatever a person typed around the number. */
+const money = (v: FormDataEntryValue | null) => {
+  const raw = text(v)?.replace(/[^0-9.]/g, '');
+  if (!raw) return null;
+  const n = Number.parseFloat(raw);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+};
+
 // ------------------------------------------------------------------ companies
 
 export async function saveCompany(formData: FormData) {
@@ -82,6 +90,8 @@ export async function saveCompany(formData: FormData) {
     phone: text(formData.get('phone')),
     employees: Number.isFinite(employees) ? employees : null,
     owner_id: text(formData.get('owner_id')),
+    amount: money(formData.get('amount')),
+    close_date: text(formData.get('close_date')),
   };
 
   if (id) {
@@ -108,13 +118,42 @@ export async function setCompanyStatus(formData: FormData) {
   const id = text(formData.get('id'));
   if (!id) return;
 
-  await supabase
+  // The database refuses "committed" without a contact and a date, and says why
+  // in the exception. Surfacing that beats a silent no-op, which is what an
+  // ignored error would look like from the dropdown.
+  const { error } = await supabase
     .from('companies')
     .update({ status: oneOf(formData.get('status'), STATUSES, 'prospect') })
     .eq('id', id);
 
   revalidatePath('/companies');
   revalidatePath(`/companies/${id}`);
+  revalidatePath('/pipeline');
+
+  if (error) return { error: error.message };
+  return { ok: true };
+}
+
+/**
+ * Archive, or bring back. Not a delete: the row, its history and its contacts
+ * stay exactly where they were, and it is reversible from the same control.
+ */
+export async function setCompanyArchived(formData: FormData) {
+  const { supabase } = await requireMember();
+  const id = text(formData.get('id'));
+  if (!id) return;
+
+  const archived = formData.get('archived') === 'true';
+
+  await supabase
+    .from('companies')
+    .update({ archived_at: archived ? new Date().toISOString() : null })
+    .eq('id', id);
+
+  revalidatePath('/companies');
+  revalidatePath(`/companies/${id}`);
+  revalidatePath('/pipeline');
+  revalidatePath('/map');
 }
 
 /**
@@ -289,6 +328,14 @@ export async function logDraftedEmail(formData: FormData) {
 
 // ----------------------------------------------------------------- activities
 
+/**
+ * Log what happened and, when the composer's follow-up is filled in, the thing
+ * that happens next — in one submit.
+ *
+ * The gap between "I talked to them" and "somebody owes them something" is
+ * where outreach dies. As two deliberate acts the second one often did not
+ * happen; as one form it usually does.
+ */
 export async function logActivity(formData: FormData) {
   const { profile, supabase } = await requireMember();
 
@@ -310,6 +357,28 @@ export async function logActivity(formData: FormData) {
   });
 
   if (error) return { error: error.message };
+
+  // The follow-up is optional and deliberately forgiving: a title with no date
+  // is still a task worth having, and a date with no title is not a task at all.
+  const followUp = text(formData.get('follow_up'));
+  if (followUp) {
+    const { error: taskError } = await supabase.from('tasks').insert({
+      title: followUp,
+      due_date: text(formData.get('follow_up_due')),
+      company_id,
+      contact_id: text(formData.get('contact_id')),
+      assignee_id: profile.id,
+      created_by: profile.id,
+    });
+
+    // The activity is already saved, so a failure here must not read as though
+    // nothing was logged.
+    if (taskError) {
+      if (company_id) revalidatePath(`/companies/${company_id}`);
+      return { ok: true, warning: `Logged, but the follow-up did not save: ${taskError.message}` };
+    }
+    revalidatePath('/tasks');
+  }
 
   if (company_id) revalidatePath(`/companies/${company_id}`);
   revalidatePath('/');
@@ -384,6 +453,8 @@ export async function bulkApply(formData: FormData) {
   if (op === 'tier') return bulkTier(formData);
   if (op === 'delete') return bulkDelete(formData);
   if (op === 'request-delete') return bulkRequestDeletion(formData);
+  if (op === 'archive') return bulkArchive(formData, true);
+  if (op === 'restore') return bulkArchive(formData, false);
   return bulkAssign(formData);
 }
 
@@ -412,6 +483,25 @@ export async function bulkTier(formData: FormData) {
   await supabase.from('companies').update({ tier }).in('id', list);
 
   revalidatePath('/companies');
+  revalidatePath('/map');
+}
+
+/**
+ * Archive or restore a selection. The bulk version matters more than the single
+ * one: archiving is what somebody does to eighty rows at the end of a season.
+ */
+export async function bulkArchive(formData: FormData, archived: boolean) {
+  const { supabase } = await requireMember();
+  const list = ids(formData);
+  if (list.length === 0) return;
+
+  await supabase
+    .from('companies')
+    .update({ archived_at: archived ? new Date().toISOString() : null })
+    .in('id', list);
+
+  revalidatePath('/companies');
+  revalidatePath('/pipeline');
   revalidatePath('/map');
 }
 
@@ -730,6 +820,145 @@ export async function importTemplates(formData: FormData) {
     imported: templates.length,
     warnings: errors,
   };
+}
+
+// ------------------------------------------------------------- attachments
+
+/**
+ * Record a file that the browser has already uploaded to Storage.
+ *
+ * The upload itself goes straight from the browser to Supabase Storage — see
+ * components/attachments.tsx — so a 10 MB agreement never passes through a
+ * Vercel request body or its size limit. This only writes the index row.
+ */
+export async function recordAttachment(formData: FormData) {
+  const { profile, supabase } = await requireMember();
+
+  const company_id = text(formData.get('company_id'));
+  const path = text(formData.get('path'));
+  const name = text(formData.get('name'));
+  if (!company_id || !path || !name) return { error: 'Nothing to record.' };
+
+  const size = Number.parseInt(text(formData.get('size_bytes')) ?? '', 10);
+
+  const { error } = await supabase.from('attachments').insert({
+    company_id,
+    name,
+    path,
+    mime: text(formData.get('mime')),
+    size_bytes: Number.isFinite(size) ? size : null,
+    created_by: profile.id,
+  });
+
+  if (error) return { error: error.message };
+
+  revalidatePath(`/companies/${company_id}`);
+  return { ok: true };
+}
+
+/**
+ * Remove a file: the object first, then the row.
+ *
+ * That order is deliberate. A row with no object behind it is a broken download
+ * link somebody will report; an object with no row is invisible and bills the
+ * club's 1 GB quota forever.
+ */
+export async function deleteAttachment(formData: FormData) {
+  const { supabase } = await requireMember();
+  const id = text(formData.get('id'));
+  const company_id = text(formData.get('company_id'));
+  if (!id) return;
+
+  const { data: row } = await supabase
+    .from('attachments')
+    .select('path')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (row?.path) {
+    const { error } = await supabase.storage.from('attachments').remove([row.path as string]);
+    if (error) return { error: `Could not remove the file: ${error.message}` };
+  }
+
+  const { error } = await supabase.from('attachments').delete().eq('id', id);
+  if (error) return { error: error.message };
+
+  if (company_id) revalidatePath(`/companies/${company_id}`);
+  return { ok: true };
+}
+
+/**
+ * A short-lived link to one file.
+ *
+ * The bucket is private, so a path is not enough to read anything: this mints a
+ * signed URL for the member asking, valid for a minute — long enough to click,
+ * short enough that a copied link in a group chat is useless by the time
+ * anybody else opens it.
+ */
+export async function attachmentUrl(path: string) {
+  const { supabase } = await requireProfile();
+
+  const { data, error } = await supabase.storage.from('attachments').createSignedUrl(path, 60);
+  if (error || !data) return { error: error?.message ?? 'Could not open that file.' };
+
+  return { url: data.signedUrl };
+}
+
+// -------------------------------------------------------------- the season
+
+/**
+ * Move one member's companies and open tasks to another.
+ *
+ * Goes through reassign_member(), which re-checks admin in the database,
+ * because it rewrites other people's assignments. Surfaced next to Remove on
+ * the members list: removing somebody without moving their work is the mistake
+ * it exists to prevent.
+ */
+export async function reassignMember(formData: FormData) {
+  const ctx = await requireAdmin();
+  if (!ctx) return { error: 'Only admins can reassign work.' };
+
+  const from_member = text(formData.get('from_member'));
+  const to_member = text(formData.get('to_member'));
+  if (!from_member) return { error: 'Pick who is leaving.' };
+
+  const { data, error } = await ctx.supabase.rpc('reassign_member', {
+    from_member,
+    to_member,
+  });
+
+  if (error) return { error: error.message };
+
+  revalidatePath('/settings');
+  revalidatePath('/companies');
+  revalidatePath('/tasks');
+
+  const moved = (data ?? {}) as { companies?: number; tasks?: number };
+  return { ok: true, companies: moved.companies ?? 0, tasks: moved.tasks ?? 0 };
+}
+
+/** How long each stage may sit untouched. Admin-only, like the other club rules. */
+export async function saveRottingRules(formData: FormData) {
+  const ctx = await requireAdmin();
+  if (!ctx) return { error: 'Only admins can change the going-cold rules.' };
+
+  const value: Record<string, number> = {};
+  for (const status of STATUSES) {
+    const n = Number.parseInt(text(formData.get(status)) ?? '', 10);
+    if (Number.isFinite(n) && n > 0) value[status] = n;
+  }
+
+  const { error } = await ctx.supabase
+    .from('settings')
+    .upsert({ key: 'rotting', value, updated_by: ctx.profile.id, updated_at: new Date().toISOString() },
+            { onConflict: 'key' });
+
+  if (error) return { error: error.message };
+
+  revalidatePath('/settings');
+  revalidatePath('/');
+  revalidatePath('/companies');
+  return { ok: true };
 }
 
 // ----------------------------------------------------------- saved views

@@ -49,6 +49,38 @@ obvious from the code and the *why* will not.
   Supabase's limit is project-wide and can't be raised without custom SMTP, so
   the app now shows what's left and refuses politely instead of spending a
   request to get a 429 back. Migration `009`.
+- **#4 Follow-up prompt when logging activity** — the composer offers a next
+  step and a due date, collapsed behind a link, and writes the task in the same
+  submit. No schema.
+- **#5 Global search (⌘K)** — `/api/search` over companies and contacts, and a
+  palette mounted in the app layout. Uses `ilike` rather than the GIN indexes on
+  purpose: somebody typing into a palette is three letters into a half-
+  remembered name, and `to_tsquery('penn')` matches nothing.
+- **#7 Duplicate detection on import** — `lib/dedupe.ts` normalises names
+  (punctuation, legal suffixes) and compares websites by domain. The importer
+  now does a dry run first and shows probable duplicates for a decision instead
+  of silently skipping them.
+- **#8 Attachments** — private `attachments` bucket, 10 MB a file, uploaded
+  browser-to-Storage so nothing passes through a Vercel request body. Reads go
+  through a 60-second signed URL. Migration `014`.
+- **#9 Sponsorship amounts and a weighted funnel** — `companies.amount` and
+  `close_date`, `STATUS_PROBABILITY` in `lib/types.ts`, weighted and committed
+  totals on `/pipeline`, amount on the companies list and the board. Migration
+  `014`.
+- **#10 Season handoff and archiving** — `companies.archived_at` with the filter
+  applied to the list, the board and the map; bulk archive and restore;
+  `reassign_member()` behind an admin check, surfaced next to Remove. Migration
+  `014`.
+- **#12 Contact-level engagement** — touch count and last-touched on
+  `/contacts`, sorted by most recently touched. `activities(count)` embed, no
+  schema.
+- **Kanban pipeline board** — drag between columns, optimistic with a rollback
+  when the database refuses the move. Native drag and drop, no library.
+- **Per-stage deal rotting** — `ROTTING_DEFAULTS` and a `rotting` settings row;
+  each stage has its own tolerance and the cold filter is an OR over stages.
+- **Required fields by stage** — `check_committed_ready()` refuses "committed"
+  without a contact and a date. Deliberately only that transition: gating every
+  stage turns a two-second status change into a form. Migration `014`.
 - **#6 Email templates + mailto handoff** — built, and then rebuilt. The first
   version kept the four letters in `lib/cold-email.ts` and the club's details in
   browser storage, on the grounds that a table nobody edits is a table nobody
@@ -85,149 +117,28 @@ obvious from the code and the *why* will not.
 
 ---
 
-## #4 Follow-up prompt when logging activity
-
-**Problem.** The gap between "I talked to them" and "someone owes them something
-next" is where outreach dies. Logging a call and creating the follow-up task are
-currently two separate deliberate acts, so the second one often doesn't happen.
-
-**Shape.** No schema. Extend `logActivity` in `app/actions.ts` to also insert a
-task when the composer's follow-up fields are filled in. Add to
-`components/activity-composer.tsx`: a "next step" text field and a due-date,
-defaulted to about a week out, collapsed behind a link until wanted.
-
-Worth considering: after logging, if the company has no open task, show a
-one-click "remind me in a week" rather than a form.
-
----
-
-## #5 Global search (⌘K)
-
-**Problem.** Finding a company means going to the companies page and filtering.
-Fine at 1,200 records with a plan; bad when someone says a name on a call.
-
-**Shape.** The expensive part is already done — `companies_search` and
-`contacts_search` GIN indexes exist in `schema.sql`. Add `/api/search?q=`
-querying both, capped at ~10 each, and a client palette component mounted in
-`app/(app)/layout.tsx` bound to ⌘K / Ctrl-K. Arrow keys and Enter to navigate.
-
-Use the existing `ilike` approach for short queries and `textSearch` for longer
-ones — the GIN index does nothing for a two-letter prefix.
-
----
-
-## #7 Duplicate detection on import
-
-**Problem.** `/api/import` currently skips a row only on an exact
-case-insensitive name match. Two members importing overlapping lists silently
-fork every company that differs by "Inc." or a comma.
-
-**Shape.** Normalise before comparing: lowercase, strip punctuation and the
-common suffixes (Inc, LLC, Corp, Co, Ltd), collapse whitespace. Match on that
-plus website domain. Then a review step in `components/csv-import.tsx`: show
-probable duplicates side by side and let the importer merge, skip, or keep both.
-
-**Do this in JavaScript, not `pg_trgm`.** It avoids an extension dependency and
-keeps the decision in front of a human, which is what actually matters here.
-
----
-
-## #8 Attachments
-
-**Problem.** Signed agreements, sponsorship decks, and tour waivers live in one
-member's Drive and leave with them when they graduate.
-
-**Shape.** Supabase Storage, private bucket `attachments`, 10 MB a file (the
-free tier gives 1 GB total). An `attachments` table as the index
-(`company_id`, `name`, `path`, `mime`, `size_bytes`, `created_by`).
-
-Upload **client-side** via `lib/supabase-browser.ts` straight to Storage, then a
-server action records the row — this keeps files out of the Vercel request body
-and its size limit entirely. Reads go through a short-lived signed URL minted
-for a member; the bucket must stay private so a path cannot be guessed.
-
-Storage policies live on `storage.objects` and need `bucket_id = 'attachments'`
-in every clause, or they leak across buckets. Note the `pg_policies` guard needs
-`schemaname = 'storage'`.
-
----
-
-## #9 Sponsorship amounts and a weighted funnel
-
-**Problem.** `companies.interest` records that someone wants sponsorship. There
-is no money anywhere in the app, so the pipeline chart counts logos rather than
-dollars — and a count is not what you show an advisor or a successor.
-
-**Shape.** `companies.amount numeric(12,2)` and `close_date date`. A probability
-per status (roughly: prospect 5%, contacted 15%, in conversation 40%, committed
-100%, declined and dormant 0) in `lib/types.ts`. Then weighted totals on
-`/pipeline`, and amount as a column and sort on the companies list.
-
-Keep it on `companies` rather than inventing a `deals` table. A club pursues one
-relationship per company; multiple concurrent deals is a shape this does not
-have, and modelling it would cost every query a join for nothing.
-
----
-
-## #10 Season handoff and archiving
-
-**Problem.** This is a student club: the roster turns over every year. Nothing
-in the app handles a member graduating, and a successor inherits 1,200 rows with
-no idea which are live.
-
-**Shape.** Two independent pieces.
-
-*Archiving.* `companies.archived_at timestamptz`. Every working query gains
-`.is('archived_at', null)` unless `?archived=1`. Bulk-archive from the existing
-selection bar. Archiving is not deleting — the history stays.
-
-*Handoff.* A `reassign_member(from_member, to_member)` SECURITY DEFINER function
-that moves `companies.owner_id` and open `tasks.assignee_id` in one statement.
-Admin-only, because it rewrites other people's assignments. Surface it on
-`/members` next to the remove control, since removing someone without moving
-their work is the mistake it exists to prevent.
-
-**This is the feature most club CRMs lack and most need.** It is also the one
-with the widest blast radius — the `archived_at` filter has to be added to every
-list, the map, and the pipeline, and missing one means a page quietly disagrees
-with the others.
-
----
-
-## #12 Contact-level engagement
-
-**Problem.** Activities link to a contact but nothing aggregates per person, so
-nobody knows which individual at a company actually replies.
-
-**Shape.** `contacts.last_touch_at` already exists — migration `007` added it.
-Remaining work is display: a touch count and last-touched column on
-`/contacts`, sortable, and on the company page mark the most responsive contact.
-
-The cheapest useful version is a `activities(count)` embed plus the existing
-`last_touch_at`. Anything more (reply rates, response times) needs data the CRM
-does not capture and probably shouldn't try to.
-
----
-
 ## #13 Weekly digest to officers
 
 **Problem.** Nobody opens a CRM they aren't prompted to open.
 
-**Shape.** A Supabase Edge Function `weekly-digest` plus a `pg_cron` schedule,
-emailing via Resend's free tier (3k/month). Content: new companies, status
-moves, tours booked, tasks overdue, and the going-cold list from #2.
+**Status: written, not deployed.** `supabase/functions/weekly-digest/index.ts`
+is the function — new companies, status moves, going-cold and overdue tasks,
+mailed to admins — and `schedule.sql` next to it is the `pg_cron` job.
 
-**This is the one that needs a secret.** The function needs a service-role key
-or its own restricted role to read across members, and a Resend API key — both
-as Edge Function secrets, never in the repo and never in `NEXT_PUBLIC_*`. The
-app's "no service-role key anywhere" property is a real security property worth
-preserving; keeping the key inside the Edge Function rather than the Next.js app
-is what preserves it.
+**Blocked on two secrets that must not live in this repository:** a Resend API
+key and a service-role key, both set as Edge Function secrets. That is the one
+place a service-role key is acceptable: it stays inside the function, on a timer
+with no signed-in user for RLS to read, and the Next.js app still has no way to
+reach it.
 
-Build #1 (per-assignee task reminders) at the same time — same cron, same
-Resend account, most of the same code.
+To finish it:
 
----
+```
+supabase secrets set RESEND_API_KEY=...
+supabase secrets set DIGEST_SECRET=...        # any long random string
+supabase functions deploy weekly-digest
+# then edit and run supabase/functions/weekly-digest/schedule.sql
+```
 
 ## Borrowed from the big CRMs — to keep or lose
 
@@ -242,7 +153,9 @@ The recurring reason to cut is not difficulty. It is that most CRM features
 assume a full-time seller with a quota, and this app is used by volunteers
 between lectures.
 
-### Strong candidates
+### Strong candidates — all now built
+
+Every row here shipped; kept for the reasoning rather than as a plan.
 
 - **Kanban pipeline board** (Pipedrive's core, HubSpot deal board). Drag a
   company between statuses instead of using the dropdown. `/pipeline` already

@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { currentProfile, serverClient } from '@/lib/supabase';
 import { NavRail, type RailCounts } from '@/components/nav-rail';
+import { CommandPalette } from '@/components/command-palette';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   // Signed in but not on the allowlist means no profile row, and RLS would show
@@ -36,6 +37,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex min-h-screen flex-col lg:flex-row">
       <NavRail profile={profile} counts={counts} />
+      {/* Mounted once for the whole app: ⌘K works from any page. */}
+      <CommandPalette />
       <main className="min-w-0 flex-1 px-5 py-7 sm:px-8">
         <div className="mx-auto max-w-5xl">{children}</div>
       </main>

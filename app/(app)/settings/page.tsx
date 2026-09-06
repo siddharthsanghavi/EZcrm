@@ -1,10 +1,11 @@
 import Link from 'next/link';
 import { ClubDetailsForm } from '@/components/club-details-form';
 import { OutreachGoalForm } from '@/components/outreach-goal-form';
+import { RottingRulesForm } from '@/components/season-forms';
 import { MembersPanel } from '@/components/members-panel';
 import { TemplateEditor } from '@/components/template-editor';
 import { currentProfile } from '@/lib/supabase';
-import { loadClubDetails, loadTemplates } from '@/lib/settings';
+import { loadClubDetails, loadRottingRules, loadTemplates } from '@/lib/settings';
 import { loadGoal } from '@/lib/goal';
 import { canWrite, displayName } from '@/lib/types';
 
@@ -78,7 +79,11 @@ export default async function SettingsPage({
 }
 
 async function ClubSection({ isAdmin }: { isAdmin: boolean }) {
-  const [club, goal] = await Promise.all([loadClubDetails(), loadGoal()]);
+  const [club, goal, rotting] = await Promise.all([
+    loadClubDetails(),
+    loadGoal(),
+    loadRottingRules(),
+  ]);
   const incomplete = Object.values(club).some((v) => v.startsWith('['));
 
   return (
@@ -108,6 +113,17 @@ async function ClubSection({ isAdmin }: { isAdmin: boolean }) {
       </p>
 
       <OutreachGoalForm goal={goal} isAdmin={isAdmin} />
+    </section>
+
+    <section className="card mt-6 p-5">
+      <h2 className="text-sm font-semibold">Going cold</h2>
+      <p className="mt-1 text-sm text-black/55">
+        How long a company may sit at each stage before the dashboard flags it. A week of silence
+        after a first email is normal; a month mid-conversation is not, which is why these are per
+        stage rather than one number.
+      </p>
+
+      <RottingRulesForm rules={rotting} isAdmin={isAdmin} />
     </section>
     </>
   );

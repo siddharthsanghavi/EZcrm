@@ -3,6 +3,7 @@ import { bulkApply } from '@/app/actions';
 import { BulkBar, SelectAll } from '@/components/bulk-bar';
 import { SavedViews } from '@/components/saved-views';
 import { currentProfile, serverClient } from '@/lib/supabase';
+import { loadRottingRules } from '@/lib/settings';
 import { normalizeViewQuery, type SavedView } from '@/lib/views';
 import {
   ACTIVE_STAGES,
@@ -15,6 +16,8 @@ import {
   canWrite,
   displayName,
   isCold,
+  money,
+  rottingStages,
   sinceLabel,
   type Status,
 } from '@/lib/types';
@@ -30,6 +33,7 @@ type Search = {
   region?: string;
   owner?: string;
   cold?: string;
+  archived?: string;
   q?: string;
   page?: string;
   deleted?: string;
@@ -56,26 +60,41 @@ export default async function CompaniesPage({
   // are peeled off here — everything downstream builds links from `sp` and would
   // otherwise carry them along for the rest of the session.
   const { deleted, kept, ...sp } = await searchParams;
-  const { status, tier, type, region, owner, cold, q } = sp;
+  const { status, tier, type, region, owner, cold, archived, q } = sp;
   const page = Math.max(1, Number.parseInt(sp.page ?? '1', 10) || 1);
 
   const supabase = await serverClient();
+  const rotting = await loadRottingRules();
 
   let query = supabase
     .from('companies')
     .select(
-      'id, name, website, industry, status, interest, type, tier, city, region, owner_id, last_touch_at, contacts(count), profiles!companies_owner_id_fkey(full_name, email)',
+      'id, name, website, industry, status, interest, type, tier, city, region, owner_id, amount, close_date, archived_at, last_touch_at, contacts(count), profiles!companies_owner_id_fkey(full_name, email)',
       { count: 'exact' },
     )
     .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 
+  // Archived companies are off the working list unless asked for. Everything
+  // else on this page — the counts, the facets, the cold list — follows from
+  // this one clause, which is why it comes first.
+  if (archived) query = query.not('archived_at', 'is', null);
+  else query = query.is('archived_at', null);
+
   // The cold list is a worklist, not a directory: order it by how long it has
   // been ignored, worst first, rather than by the directory's own ranking.
   if (cold) {
-    const coldBefore = new Date(Date.now() - COLD_AFTER_DAYS * 864e5).toISOString();
+    // Each stage tolerates a different silence, so the filter is an OR of one
+    // clause per stage. `isCold` says the same thing in TypeScript for the row
+    // rendering — change one and change the other.
+    const stages = rottingStages(rotting);
+    const clauses = stages.map((s) => {
+      const days = rotting[s] ?? 0;
+      const before = new Date(Date.now() - days * 864e5).toISOString();
+      return `and(status.eq.${s},or(last_touch_at.is.null,last_touch_at.lt.${before}))`;
+    });
+
     query = query
-      .in('status', ACTIVE_STAGES)
-      .or(`last_touch_at.is.null,last_touch_at.lt.${coldBefore}`)
+      .or(clauses.join(','))
       .order('last_touch_at', { ascending: true, nullsFirst: true });
   } else {
     // Tier 1 first, then Tier 2, and so on — the directory's own ranking is the
@@ -214,6 +233,9 @@ export default async function CompaniesPage({
           <Pill href={withFilter(sp, 'cold', cold ? undefined : '1')} active={!!cold}>
             Going cold
           </Pill>
+          <Pill href={withFilter(sp, 'archived', archived ? undefined : '1')} active={!!archived}>
+            Archived
+          </Pill>
         </div>
 
         {me && (
@@ -295,10 +317,16 @@ export default async function CompaniesPage({
                       </span>
                     )}
 
+                    {c.amount !== null && c.amount !== undefined && (
+                      <span className="hidden w-20 shrink-0 text-right text-xs tabular-nums text-black/55 sm:block">
+                        {money(Number(c.amount))}
+                      </span>
+                    )}
+
                     <span
                       title="Last logged activity"
                       className={`hidden w-20 shrink-0 text-right text-xs sm:block ${
-                        isCold(c.status as Status, c.last_touch_at as string | null)
+                        isCold(c.status as Status, c.last_touch_at as string | null, rotting)
                           ? 'font-medium text-warn'
                           : 'text-black/35'
                       }`}
@@ -340,7 +368,14 @@ export default async function CompaniesPage({
         )}
       </div>
 
-      {writable && <BulkBar members={members ?? []} formId="bulk" isAdmin={me?.role === 'admin'} />}
+      {writable && (
+        <BulkBar
+          members={members ?? []}
+          formId="bulk"
+          isAdmin={me?.role === 'admin'}
+          archived={!!archived}
+        />
+      )}
       </form>
 
       {lastPage > 1 && (

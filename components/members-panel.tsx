@@ -5,6 +5,7 @@ import { AddMemberForm } from '@/components/add-member-form';
 import { EmailQuotaTracker, type QuotaRequest } from '@/components/email-quota-tracker';
 import { LoginTracker, type LoginRow } from '@/components/login-tracker';
 import { ROLE_HINTS, displayName, type Role } from '@/lib/types';
+import { HandoffForm } from '@/components/season-forms';
 
 /**
  * Member administration, lifted out of the old /members page so it can live
@@ -135,6 +136,10 @@ export async function MembersPanel() {
                       <button className="text-xs text-black/45 hover:text-ink">Set</button>
                     </form>
                   )}
+
+                  {/* Next to Remove on purpose: removing somebody without
+                      moving their work is the mistake this prevents. */}
+                  <HandoffForm member={p} members={profiles ?? []} />
 
                   {p.id !== me?.id && (
                     <form action={removeMember}>

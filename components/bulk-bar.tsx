@@ -14,11 +14,14 @@ export function BulkBar({
   members,
   formId,
   isAdmin,
+  archived = false,
 }: {
   members: Pick<Profile, 'id' | 'full_name' | 'email'>[];
   formId: string;
   /** Admins delete outright; everyone else files a request an admin decides. */
   isAdmin: boolean;
+  /** Viewing the archive, where the useful bulk action is putting things back. */
+  archived?: boolean;
 }) {
   const [count, setCount] = useState(0);
 
@@ -103,6 +106,19 @@ export function BulkBar({
         </select>
         <button name="op" value="tier" className="btn-ghost py-1.5">
           Set tier
+        </button>
+
+        <span className="mx-1 h-5 w-px bg-black/10" />
+
+        {/* Reversible, and the thing a committee does to eighty rows at the end
+            of a season — so it sits with the ordinary operations rather than
+            beside the destructive one. */}
+        <button
+          name="op"
+          value={archived ? 'restore' : 'archive'}
+          className="btn-ghost py-1.5"
+        >
+          {archived ? 'Restore' : 'Archive'}
         </button>
 
         <span className="mx-1 h-5 w-px bg-black/10" />

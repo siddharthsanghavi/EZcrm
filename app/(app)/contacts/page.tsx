@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { currentProfile, serverClient } from '@/lib/supabase';
-import { canWrite } from '@/lib/types';
+import { canWrite, sinceLabel } from '@/lib/types';
 import { deleteContact } from '@/app/actions';
 import { ContactForm } from '@/components/contact-form';
 
@@ -17,7 +17,11 @@ export default async function ContactsPage({
 
   let query = supabase
     .from('contacts')
-    .select('*, companies(id, name)')
+    // activities(count) is the cheapest useful measure of who actually engages:
+    // reply rates and response times need data this CRM does not capture and
+    // probably should not try to.
+    .select('*, companies(id, name), activities(count)')
+    .order('last_touch_at', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: false });
 
   if (q) query = query.or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,email.ilike.%${q}%`);
@@ -65,6 +69,21 @@ export default async function ContactsPage({
                           {c.phone && <span>{c.phone}</span>}
                         </div>
                       </div>
+
+                      {(() => {
+                        const touches =
+                          (c.activities as unknown as { count: number }[])?.[0]?.count ?? 0;
+                        return (
+                          <span className="hidden shrink-0 items-baseline gap-3 text-xs sm:flex">
+                            <span className="w-16 text-right text-black/40">
+                              {touches > 0 ? `${touches} touch${touches === 1 ? '' : 'es'}` : '—'}
+                            </span>
+                            <span className="w-16 text-right text-black/35">
+                              {sinceLabel(c.last_touch_at as string | null)}
+                            </span>
+                          </span>
+                        );
+                      })()}
 
                       {writable && (
                         <form action={deleteContact}>

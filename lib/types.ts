@@ -81,6 +81,28 @@ export const STATUS_DOTS: Record<Status, string> = {
   dormant: 'bg-black/20',
 };
 
+/**
+ * How long a company may sit in each stage before it counts as going cold.
+ *
+ * One global threshold was too blunt: a week in "contacted" is fine, a month in
+ * "in conversation" means the conversation stopped. Prospect has none — nobody
+ * has promised a prospect anything — and the three end states are not waiting
+ * on us at all.
+ */
+export type RottingRules = Partial<Record<Status, number>>;
+
+export const ROTTING_DEFAULTS: RottingRules = {
+  contacted: 21,
+  in_conversation: 14,
+  committed: 30,
+};
+
+/** Days a stage tolerates before a company is stale, or null if it never is. */
+export function rotAfter(status: Status, rules: RottingRules | null | undefined): number | null {
+  const configured = (rules ?? ROTTING_DEFAULTS)[status];
+  return typeof configured === 'number' && configured > 0 ? configured : null;
+}
+
 export const INTERESTS = ['tour', 'sponsorship'] as const;
 export type Interest = (typeof INTERESTS)[number];
 
@@ -99,6 +121,33 @@ export const TIER_STYLES: Record<string, string> = {
   Reference: 'bg-black/[0.04] text-black/40',
 };
 
+/**
+ * What a status is worth, for the weighted funnel.
+ *
+ * A club's pipeline chart counts logos; an advisor asks about money. These are
+ * deliberately round numbers and deliberately not tuned: nobody here has the
+ * hundreds of outcomes it would take to fit them, and a false precision like
+ * 37% would invite exactly the trust the number has not earned.
+ */
+export const STATUS_PROBABILITY: Record<Status, number> = {
+  prospect: 0.05,
+  contacted: 0.15,
+  in_conversation: 0.4,
+  committed: 1,
+  declined: 0,
+  dormant: 0,
+};
+
+/** "$12,500" — whole dollars, because nobody pledges cents. */
+export function money(amount: number | null | undefined) {
+  if (amount === null || amount === undefined) return null;
+  return amount.toLocaleString(undefined, {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  });
+}
+
 export type Company = {
   id: string;
   name: string;
@@ -115,6 +164,12 @@ export type Company = {
   phone: string | null;
   employees: number | null;
   owner_id: string | null;
+  /** What the club expects this to be worth, if anything. */
+  amount: number | null;
+  /** When it lands — required before a company can be marked committed. */
+  close_date: string | null;
+  /** Set means "off the working list, but not deleted". */
+  archived_at: string | null;
   /** Last logged activity, maintained by trigger. Null means never touched. */
   last_touch_at: string | null;
   created_at: string;
@@ -379,14 +434,31 @@ export function daysSince(iso: string | null | undefined): number | null {
 }
 
 /**
- * Cold means: still in play, and nobody has logged anything in three weeks.
- * The database filter in the companies page has to express this in PostgREST
- * terms, so if you change the rule, change it in both places.
+ * Cold means: this stage was waiting on us, and nobody has done anything for
+ * longer than that stage tolerates.
+ *
+ * The threshold is per stage now (see ROTTING_DEFAULTS), which is why the rules
+ * are passed in: they are a club setting, not a constant. Committed counts too
+ * — a company that said yes in March and has heard nothing since is exactly the
+ * one you lose.
+ *
+ * The companies page has to express the same rule in PostgREST terms to filter
+ * server-side, so if you change this, change `coldFilter` with it.
  */
-export function isCold(status: Status, lastTouchAt: string | null): boolean {
-  if (!ACTIVE_STAGES.includes(status)) return false;
+export function isCold(
+  status: Status,
+  lastTouchAt: string | null,
+  rules?: RottingRules | null,
+): boolean {
+  const after = rotAfter(status, rules);
+  if (after === null) return false;
   const days = daysSince(lastTouchAt);
-  return days === null || days >= COLD_AFTER_DAYS;
+  return days === null || days >= after;
+}
+
+/** Stages that can go cold at all, given the club's rules. */
+export function rottingStages(rules?: RottingRules | null): Status[] {
+  return STATUSES.filter((s) => rotAfter(s, rules) !== null);
 }
 
 /**

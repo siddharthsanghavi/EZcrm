@@ -134,6 +134,36 @@ export function CompanyForm({ company }: { company?: Company }) {
         </div>
 
         <div>
+          <label className="label" htmlFor="amount">
+            Amount
+          </label>
+          <input
+            id="amount"
+            name="amount"
+            inputMode="decimal"
+            placeholder="2500"
+            defaultValue={company?.amount ?? ''}
+            className="field"
+          />
+        </div>
+
+        <div>
+          <label className="label" htmlFor="close_date">
+            {/* Required before a company can be marked committed — the database
+                refuses it otherwise, so the field says why here rather than
+                letting somebody discover it from an error. */}
+            Close date
+          </label>
+          <input
+            id="close_date"
+            name="close_date"
+            type="date"
+            defaultValue={company?.close_date ?? ''}
+            className="field"
+          />
+        </div>
+
+        <div>
           <label className="label" htmlFor="employees">
             Employees
           </label>

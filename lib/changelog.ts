@@ -16,6 +16,23 @@ export type Change = {
 
 export const CHANGELOG: Change[] = [
   {
+    date: '2026-09-06',
+    title: 'A board you can drag, money in the pipeline, files, and search',
+    notes: [
+      'The pipeline is now a board. Drag a company between columns to change its status, with each column showing how many companies and how much money sit in it.',
+      'Companies have an amount and a close date. The pipeline shows a weighted total — a prospect counts for 5%, a conversation 40%, a commitment in full — next to what is actually committed.',
+      '“Committed” now means something: a company cannot be marked committed without a named contact and a date. The app says which one is missing.',
+      'Press ⌘K (Ctrl-K on Windows) anywhere to search companies and contacts by name, city, industry or email. Arrow keys to move, Enter to open.',
+      'Files live on the company now — signed agreements, waivers, a sponsorship deck. Up to 10 MB each, private to the club, and they stay when the person who uploaded them graduates.',
+      'Archiving: take a company off the working list at the end of a season without deleting anything. Contacts, history and files stay, and it is reversible. Filter to Archived to see them, or archive a whole selection at once.',
+      'Handing over: on the Members list, move somebody’s companies and open tasks to another member in one click. Do this before removing them.',
+      'Logging a call now offers a follow-up task in the same form, dated a week out by default.',
+      'Going cold is per stage now — set how long each stage may sit untouched under Settings. A week of silence after a first email is normal; a month mid-conversation is not.',
+      'Importing a CSV checks for near-duplicates before writing anything: “Pennine Print Works, Inc.” is recognised as the company you already have. You get to decide row by row.',
+      'The contacts list shows how many times each person has been contacted, and when they last were.',
+    ],
+  },
+  {
     date: '2026-09-03',
     title: 'Set an outreach goal',
     notes: [

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { currentProfile, serverClient } from '@/lib/supabase';
+import { findDuplicate, type DuplicateMatch } from '@/lib/dedupe';
 import { INTERESTS, STATUSES, type Status } from '@/lib/types';
 
 const MAX_ROWS = 2000;
@@ -59,7 +60,12 @@ export async function POST(request: Request) {
   const profile = await currentProfile();
   if (!profile) return NextResponse.json({ error: 'Not authorised.' }, { status: 403 });
 
-  const { table, rows } = (await request.json()) as { table: string; rows: Row[] };
+  const { table, rows, dryRun, force } = (await request.json()) as {
+    table: string;
+    rows: Row[];
+    dryRun?: boolean;
+    force?: string[];
+  };
 
   if (table !== 'companies' && table !== 'contacts') {
     return NextResponse.json({ error: 'Unknown table.' }, { status: 400 });
@@ -112,25 +118,55 @@ export async function POST(request: Request) {
       ];
     });
 
-    // Skip names already in the CRM so re-running an import tops up the list
-    // rather than doubling it.
-    const { data: existing } = await supabase.from('companies').select('name');
-    const known = new Set((existing ?? []).map((c) => c.name.trim().toLowerCase()));
+    // Near matches, not just exact ones: "Pennine Print Works, Inc." and
+    // "Pennine Print Works" are the same factory, and importing both forks the
+    // directory in a way nobody notices for a term.
+    const { data: existing } = await supabase.from('companies').select('id, name, website');
+    const known = [...((existing ?? []) as { id: string; name: string; website: string | null }[])];
+
+    // Rows the importer has already looked at and said "add it anyway".
+    const forced = new Set(
+      (Array.isArray(force) ? force : []).map((n) => String(n).trim().toLowerCase()),
+    );
+
+    const duplicates: { name: string; reason: DuplicateMatch['reason']; existing: string }[] = [];
 
     const fresh = payload.filter((c) => {
-      if (known.has(c.name.toLowerCase())) {
+      if (forced.has(c.name.trim().toLowerCase())) {
+        // Still added to `known`, so a file listing the same new company twice
+        // does not import it twice.
+        known.push({ id: 'pending', name: c.name, website: c.website });
+        return true;
+      }
+
+      const match = findDuplicate(c, known);
+      if (match) {
         skipped++;
+        duplicates.push({ name: c.name, reason: match.reason, existing: match.existing.name });
         return false;
       }
-      known.add(c.name.toLowerCase());
+
+      known.push({ id: 'pending', name: c.name, website: c.website });
       return true;
     });
+
+    // A dry run answers "what would this do?" without doing it, which is what
+    // the review step in the importer asks before anybody commits to a file.
+    if (dryRun) {
+      return NextResponse.json({
+        dryRun: true,
+        wouldCreate: fresh.length,
+        skipped,
+        duplicates: duplicates.slice(0, 50),
+        errors,
+      });
+    }
 
     const created = await insertChunked(supabase, 'companies', fresh);
     if (typeof created === 'string') return NextResponse.json({ error: created }, { status: 400 });
 
     await logImport(supabase, 'companies', created);
-    return NextResponse.json({ created, skipped, errors });
+    return NextResponse.json({ created, skipped, errors, duplicates: duplicates.slice(0, 50) });
   }
 
   // Contacts: resolve the optional `company` column to an id by name so an

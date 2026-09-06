@@ -3,6 +3,13 @@
 A lightweight CRM for a club running outreach to companies for tours and sponsorships.
 Tracks companies, the people at them, every touch, and what you owe them next.
 
+Companies on a map and a draggable pipeline board, with an amount and a close
+date behind a weighted funnel. Contacts as a reporting tree, not a flat list.
+Cold-email drafts from templates the club edits itself. Files on the company.
+Everything anybody does in one activity feed, deletions behind an approval
+queue, and a read-only role for people who should see the pipeline without
+being able to change it.
+
 Built for ~5 people, on free tiers, with security enforced in the database rather
 than in application code.
 
@@ -34,8 +41,15 @@ than in application code.
   Postgres, so a bug in a page can't leak data that RLS wouldn't have handed over.
 - **No service-role key.** The app only ever holds the anon key, which grants
   nothing on its own. There is no credential in this repo that can bypass RLS.
+- **Three roles.** A `viewer` reads everything and writes nothing; a `member`
+  reads and writes; an `admin` also manages people. Reads go through
+  `has_access()`, writes through `is_member()` — the split is enforced in
+  Postgres, and the hidden buttons are only a courtesy.
 - **Deletes are narrower than writes.** Any member can edit; only the record's
-  creator or an admin can delete.
+  creator or an admin can delete, and for companies, admins only — everyone else
+  files a request that an admin approves, and every deletion is recorded.
+- **An audit trail.** Every write is logged by trigger, so a change made in the
+  SQL editor is recorded exactly like one made in the app.
 - HSTS, `X-Frame-Options: DENY`, and `nosniff` are set in `next.config.mjs`.
   Encryption in transit and at rest comes from Supabase and Vercel by default.
 

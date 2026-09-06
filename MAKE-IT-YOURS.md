@@ -164,13 +164,24 @@ lighter, check it.
 
 ## 5. Your words
 
-These contain one club's specifics — including a real person's email address.
-**Rewrite them before you deploy anywhere public.**
+These contain one club's specifics. **Rewrite them before you deploy anywhere
+public.**
 
-- **`app/privacy/page.tsx`** and **`app/terms/page.tsx`** — mention Riverbend
-  State University and carry a contact address. They are also written to be
-  *true*: if you change what the app stores or who it shares with, change these
-  to match. They are required if you set up Google sign-in.
+- **`/settings → Club`** — your club name, school, group size, visit length and
+  a contact address. These are database rows, not code: `/privacy` and `/terms`
+  read the club name and contact address from them, and every email draft merges
+  them. Until they are set, both pages say "a student club" and drafts carry
+  visible `[PLACEHOLDERS]`.
+- **`/settings → Email templates`** — the four letters ship as skeletons with
+  square-bracket prompts where your own writing goes. Edit them in the app, or
+  paste a set into the Markdown import;
+  `supabase/email-templates.example.md` documents the format.
+- **`/settings → Outreach goal` and `Going cold`** — what the club means to
+  achieve daily, monthly and yearly, and how long each stage may sit untouched.
+  Both ship as defaults rather than as anybody's real numbers.
+- **`app/privacy/page.tsx`** and **`app/terms/page.tsx`** — the wording around
+  those settings. Written to be *true*: if you change what the app stores or who
+  it shares with, change these to match. They are required for Google sign-in.
 - **`app/(app)/guide/page.tsx`** — the in-app manual. The explanation of what a
   CRM is travels fine; the parts about plant tours and sponsorship are yours to
   rewrite.

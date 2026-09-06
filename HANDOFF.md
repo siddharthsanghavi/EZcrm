@@ -26,14 +26,27 @@ Next.js (App Router) + Supabase + Vercel. No paid services.
 ## Shape of the thing
 
 **Tables** — `companies`, `contacts`, `activities`, `tasks`, `status_events`,
-`saved_views`, plus `profiles` and `allowed_emails` for access, `geocache` for
-map coordinates, and `auth_email_requests` / `login_events` for sign-in
-tracking (both admin-read-only, both revoked from `anon`).
+`saved_views`, `attachments`, plus `profiles` and `allowed_emails` for access,
+`geocache` for map coordinates, `auth_email_requests` / `login_events` for
+sign-in tracking (both admin-read-only, both revoked from `anon`), and four
+added later: `audit_events` (the activity feed), `deletion_requests` and
+`company_deletions` (asking to delete, and the record of it), `settings` and
+`email_templates` (what the club calls itself and the letters it sends).
 
-**Pages** — Dashboard, Companies (filters, search, pagination, bulk assign and
-bulk status), Company detail (status, owner, activity timeline, contacts, tasks,
-status history), Pipeline (live flowchart), Map, Contacts, Tasks, Import/Export,
-Members, Guide.
+**Pages** — Dashboard (status counts, goal bars, going cold, tasks, activity),
+Companies (filters, search, pagination, bulk assign/status/tier/archive/delete,
+CSV draft export), Company detail (status, owner, tier, cold-email composer,
+activity, contact tree, tasks, files, history), Pipeline (draggable board,
+weighted money, flowchart), Map, Contacts, Tasks, Activity, Deletions,
+Import/Export, Settings (club, goal, going-cold rules, email templates,
+members), Guide.
+
+**Roles** — `viewer` reads everything and writes nothing, `member` reads and
+writes, `admin` also manages people and is the only role that can delete a
+company. The split lives in two functions: `has_access()` ("has a profile")
+backs every read policy, `is_member()` ("may write") backs every write policy.
+Get those the wrong way round on a new table and a viewer silently gains write
+access — this is the single easiest mistake to make in this schema.
 
 **Behaviour worth knowing**
 
@@ -46,6 +59,38 @@ Members, Guide.
   `updated_at`** — to judge whether anyone has actually been in contact;
   `updated_at` moves when someone fixes a typo. The trigger refuses to move a
   touch backwards, so back-dating an old call can't make a company look colder.
+
+- **`audit_events` is the activity feed**, written by triggers on companies,
+  contacts, tasks, activities, deletion requests, profiles and `allowed_emails`.
+  A write from the SQL editor is logged exactly like one from the UI. Imports
+  and exports are logged by the app instead, because an export is a SELECT and
+  no trigger can see one. Sign-ins are deliberately absent — they live in
+  `login_events`, which is admin-only.
+
+- **Deleting a company is admin-only**, and everyone else files a
+  `deletion_requests` row that an admin approves or declines on `/deletions`.
+  Every deletion is recorded in `company_deletions` with a jsonb snapshot of the
+  row, and that table has no foreign key on purpose: it has to outlive the thing
+  it describes.
+
+- **Email templates and club details are rows, not code** (`email_templates`,
+  `settings`). `lib/cold-email.ts` turns a template plus a company into a draft;
+  the app never sends mail, it hands a `mailto:` to the member's own client. The
+  repository ships skeletons — the club's real letters live only in its own
+  database, exportable as Markdown from `/settings`.
+
+- **"Committed" is gated.** `check_committed_ready()` refuses the transition
+  without a contact and a close date. That refusal is a Postgres exception, so
+  any UI that sets status has to be able to show it — `components/status-picker.tsx`
+  and the board both do. A plain `<form action>` swallows it and the control
+  just snaps back.
+
+- **Going cold is per stage**, configured in `settings` under `rotting`.
+  `isCold()` in `lib/types.ts` says the rule in TypeScript and the companies
+  page says the same thing to PostgREST as an OR of one clause per stage. They
+  have to change together — that is the one duplication in this codebase that is
+  deliberate, because a server-side filter and a client-side highlight cannot
+  share an implementation.
 
 - **The visual system is "Console"**, chosen from two directions drafted on a
   design canvas. What it commits to: a nav **rail** with per-section counts
@@ -254,8 +299,17 @@ phantom missing modules.
   bug in a page can't leak what RLS wouldn't hand over.
 - No `service_role` key anywhere in the app — only the anon key, which grants
   nothing on its own.
-- Deletes are narrower than writes: any member can edit, only the creator or an
-  admin can delete.
+- Deletes are narrower than writes: for most tables the creator or an admin;
+  for `companies`, admins only.
+- Reads use `has_access()`, writes use `is_member()`. That is the viewer role,
+  and it is enforced in Postgres, not in the UI: the hidden buttons are a
+  courtesy, the policy is the boundary.
+- One `settings` row (`key = 'club'`) is readable without a session, because
+  `/privacy` and `/terms` are public and name the club. **Nothing private may go
+  in that row.** Every other key stays behind `has_access()`.
+- Attachments live in a private Storage bucket. Reads go through a 60-second
+  signed URL; the bucket must never be made public, or every signed agreement
+  becomes readable by anyone who can guess a path.
 
 Verified by impersonating each role against a live database: anonymous and
 signed-in non-members get 0 rows on every table and are blocked from insert,
@@ -301,6 +355,28 @@ whenever you want one.
 If a repo was ever public with data committed, remember **git keeps deleted
 files in history** — making the repo private is the simple fix; rewriting
 history with `git-filter-repo` is the thorough one.
+
+---
+
+## Testing without a database
+
+There is no seed script and no test suite. What has worked repeatedly is a
+throwaway stand-in for `lib/supabase.ts`: an in-memory fake implementing enough
+of the PostgREST builder (`eq`, `is`, `not`, `in`, `or`, `ilike`, `order`,
+`limit`, `range`, `count`, `maybeSingle`) plus a pass-through `middleware.ts`,
+run against `npm run dev`. It renders every page with fabricated data and no
+network, which is how the UI in this app has been checked.
+
+Two things it cannot do, both of which have hidden a real bug at least once:
+
+- **Triggers.** Anything the database does — audit rows, the committed gate, the
+  reporting-loop guard — is invisible to the fake. Test those against the real
+  project inside a `do $$ ... raise exception 'TEST >> %' $$` block, which
+  reports what happened and rolls the whole thing back.
+- **Nested PostgREST filters.** `or(and(...),and(...))` is beyond the fake's
+  parser, so a filter using it looks like it matches everything. Check the
+  syntax by sending it to the real REST endpoint with the anon key: 200 means
+  PostgREST parsed it (RLS returns nothing), 400 means the string is wrong.
 
 ---
 

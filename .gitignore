@@ -30,3 +30,8 @@ design/*.html
 # instructions file. Nothing here is part of the app.
 .claude/
 CLAUDE.md
+
+# Generated code graph. 2.5 MB of derived data, rebuilt in seconds with
+# `graphify update .`, and it changes on every edit — committing it would turn
+# every pull request into a diff of a machine-written artefact.
+graphify-out/

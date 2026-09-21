@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { bulkApply } from '@/app/actions';
 import { BulkBar, SelectAll } from '@/components/bulk-bar';
 import { SavedViews } from '@/components/saved-views';
-import { currentProfile, serverClient } from '@/lib/supabase';
+import { currentProfile, selectAll, serverClient } from '@/lib/supabase';
 import { loadRottingRules } from '@/lib/settings';
 import { normalizeViewQuery, type SavedView } from '@/lib/views';
 import {
@@ -14,10 +14,12 @@ import {
   TIER_STYLES,
   TIERS,
   canWrite,
+  coldFilter,
   displayName,
   isCold,
+  locationSummary,
   money,
-  rottingStages,
+  primaryLocation,
   sinceLabel,
   type Status,
 } from '@/lib/types';
@@ -69,7 +71,10 @@ export default async function CompaniesPage({
   let query = supabase
     .from('companies')
     .select(
-      'id, name, website, industry, status, interest, type, tier, city, region, owner_id, amount, close_date, archived_at, last_touch_at, contacts(count), profiles!companies_owner_id_fkey(full_name, email)',
+      // One literal, however long: supabase-js parses this string as a type, and
+      // a concatenation is `string` to the compiler, which collapses every row
+      // field to an error type.
+      'id, name, website, industry, status, interest, type, tier, location_regions, location_cities, owner_id, amount, close_date, archived_at, last_touch_at, contacts(count), company_locations(id, label, city, region, is_primary, sort), profiles!companies_owner_id_fkey(full_name, email)',
       { count: 'exact' },
     )
     .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
@@ -83,18 +88,10 @@ export default async function CompaniesPage({
   // The cold list is a worklist, not a directory: order it by how long it has
   // been ignored, worst first, rather than by the directory's own ranking.
   if (cold) {
-    // Each stage tolerates a different silence, so the filter is an OR of one
-    // clause per stage. `isCold` says the same thing in TypeScript for the row
-    // rendering — change one and change the other.
-    const stages = rottingStages(rotting);
-    const clauses = stages.map((s) => {
-      const days = rotting[s] ?? 0;
-      const before = new Date(Date.now() - days * 864e5).toISOString();
-      return `and(status.eq.${s},or(last_touch_at.is.null,last_touch_at.lt.${before}))`;
-    });
-
+    // `isCold` says the same thing in TypeScript for the row rendering — both
+    // sides come from `coldFilter`, so change one and change the other.
     query = query
-      .or(clauses.join(','))
+      .or(coldFilter(rotting))
       .order('last_touch_at', { ascending: true, nullsFirst: true });
   } else {
     // Tier 1 first, then Tier 2, and so on — the directory's own ranking is the
@@ -105,23 +102,51 @@ export default async function CompaniesPage({
   if (status && STATUSES.includes(status as Status)) query = query.eq('status', status);
   if (tier) query = query.eq('tier', tier);
   if (type) query = query.eq('type', type);
-  if (region) query = query.eq('region', region);
+  // Any location in that region, not just the primary one — a company with a
+  // plant in the Northwest belongs in the Northwest list.
+  if (region) query = query.contains('location_regions', [region]);
   // "none" is a real filter — the unassigned pile is the one people work from.
   if (owner === 'none') query = query.is('owner_id', null);
   else if (owner) query = query.eq('owner_id', owner);
-  if (q) query = query.or(`name.ilike.%${q}%,city.ilike.%${q}%,industry.ilike.%${q}%`);
+  // City is on the locations now, so the text box matches a company whose name
+  // or specialty matches, or any of whose places is in a matching city.
+  if (q) {
+    const like = `%${q.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
+    const { data: byCity } = await supabase
+      .from('company_locations')
+      .select('company_id')
+      .ilike('city', like)
+      .limit(2000);
+    const cityIds = [...new Set((byCity ?? []).map((r) => r.company_id as string))];
+    const clauses = [`name.ilike.${like}`, `industry.ilike.${like}`];
+    if (cityIds.length) clauses.push(`id.in.(${cityIds.join(',')})`);
+    query = query.or(clauses.join(','));
+  }
 
   // Distinct values for the dropdowns. Cheap enough at this size, and it means
   // the filters always reflect whatever is actually in the database.
   const [
     { data: companies, count, error },
     { data: facets },
+    { data: regionRows },
     { data: members },
     { data: views },
     me,
   ] = await Promise.all([
     query,
-    supabase.from('companies').select('type, region').limit(5000),
+    // Distinct values, so every row has to be seen — a type that only appears
+    // past row 1,000 would otherwise never make the dropdown.
+    selectAll<{ type: string | null }>((lo, hi) =>
+      supabase.from('companies').select('type').order('id').range(lo, hi),
+    ),
+    selectAll<{ region: string | null }>((lo, hi) =>
+      supabase
+        .from('company_locations')
+        .select('region')
+        .not('region', 'is', null)
+        .order('id')
+        .range(lo, hi),
+    ),
     supabase.from('profiles').select('id, full_name, email').order('email'),
     supabase
       .from('saved_views')
@@ -131,7 +156,7 @@ export default async function CompaniesPage({
   ]);
 
   const types = [...new Set((facets ?? []).map((f) => f.type).filter(Boolean))].sort();
-  const regions = [...new Set((facets ?? []).map((f) => f.region).filter(Boolean))].sort();
+  const regions = [...new Set((regionRows ?? []).map((f) => f.region).filter(Boolean))].sort();
 
   const writable = canWrite(me);
   const total = count ?? 0;
@@ -299,7 +324,16 @@ export default async function CompaniesPage({
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-medium">{c.name}</div>
                       <div className="mt-0.5 truncate text-xs text-black/50">
-                        {[c.type, c.city, c.industry].filter(Boolean).join(' · ')}
+                        {[
+                          c.type,
+                          locationSummary(primaryLocation(c.company_locations)),
+                          (c.company_locations ?? []).length > 1
+                            ? `${(c.company_locations ?? []).length} locations`
+                            : null,
+                          c.industry,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
                       </div>
                     </div>
 

@@ -1,10 +1,12 @@
 """
-Geocode the distinct city values in the companies table so the map can plot them.
+Geocode the distinct city values on company locations so the map can plot them.
 
     python scripts/geocode_cities.py cities.txt out.json
 
-Feed it one place name per line (select distinct city from companies), then load
-the JSON into the geocache table and copy the coordinates onto companies.
+Feed it one place name per line (select distinct city from company_locations),
+then load the JSON into the geocache table and copy the coordinates onto
+company_locations. Cities live on locations, not companies, since
+supabase/migrations/015_company_locations.sql.
 
 IMPORTANT: this uses a STRUCTURED city= query, not free text. Place names often
 collide with county names, and a free-text lookup happily returns the county

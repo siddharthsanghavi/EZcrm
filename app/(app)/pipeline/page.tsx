@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { currentProfile, serverClient } from '@/lib/supabase';
+import { currentProfile, selectAll, serverClient } from '@/lib/supabase';
 import { loadRottingRules } from '@/lib/settings';
 import { PipelineBoard, type BoardCompany } from '@/components/pipeline-board';
 import { PipelineChart, PipelineLinks, type Flow, type StageCount } from '@/components/pipeline-chart';
@@ -10,7 +10,9 @@ import {
   canWrite,
   displayName,
   isCold,
+  locationSummary,
   money,
+  primaryLocation,
   type Status,
 } from '@/lib/types';
 
@@ -22,13 +24,36 @@ export const revalidate = 0;
 export default async function PipelinePage() {
   const supabase = await serverClient();
 
+  type Row = {
+    id: string;
+    name: string;
+    status: string;
+    owner_id: string | null;
+    tier: string | null;
+    amount: number | string | null;
+    last_touch_at: string | null;
+    archived_at: string | null;
+    company_locations: { city: string | null; region: string | null; is_primary: boolean }[] | null;
+    profiles: { full_name: string | null; email: string } | null;
+  };
+
   const [{ data: companies }, { data: events }, { data: members }] = await Promise.all([
-    supabase
-      .from('companies')
-      .select('id, name, status, owner_id, city, tier, amount, last_touch_at, archived_at, profiles!companies_owner_id_fkey(full_name, email)')
-      .is('archived_at', null)
-      .order('name')
-      .limit(5000),
+    // The board draws every company, so it has to have every company. A plain
+    // `.limit(5000)` returned exactly 1,000 — see `selectAll`.
+    selectAll<Row>((from, to) =>
+      supabase
+        .from('companies')
+        .select(
+          'id, name, status, owner_id, tier, amount, last_touch_at, archived_at, company_locations(city, region, is_primary), profiles!companies_owner_id_fkey(full_name, email)',
+        )
+        .is('archived_at', null)
+        .order('name')
+        // A tie-break on id keeps the pages disjoint when two companies share a
+        // name; without it a row can appear on both sides of a page boundary.
+        .order('id')
+        .range(from, to)
+        .then((r) => ({ data: r.data as unknown as Row[] | null, error: r.error })),
+    ),
     supabase
       .from('status_events')
       .select('from_status, to_status, changed_at, changed_by, companies(id, name), profiles(full_name, email)')
@@ -76,7 +101,7 @@ export default async function PipelinePage() {
     id: r.id as string,
     name: r.name as string,
     status: r.status as Status,
-    city: (r.city as string | null) ?? null,
+    city: locationSummary(primaryLocation(r.company_locations)),
     tier: (r.tier as string | null) ?? null,
     amount: r.amount === null ? null : Number(r.amount),
     last_touch_at: (r.last_touch_at as string | null) ?? null,

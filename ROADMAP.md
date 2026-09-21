@@ -78,9 +78,11 @@ obvious from the code and the *why* will not.
   when the database refuses the move. Native drag and drop, no library.
 - **Per-stage deal rotting** — `ROTTING_DEFAULTS` and a `rotting` settings row;
   each stage has its own tolerance and the cold filter is an OR over stages.
-- **Required fields by stage** — `check_committed_ready()` refuses "committed"
-  without a contact and a date. Deliberately only that transition: gating every
-  stage turns a two-second status change into a form. Migration `014`.
+- **Required fields by stage** — built in `014` as `check_committed_ready()`,
+  refusing "committed" without a contact and a date, and **removed in `016`**.
+  Even gating one transition sent people to two other forms before they could
+  record a yes, and the status stopped getting updated. The fields stayed; the
+  precondition did not.
 - **#6 Email templates + mailto handoff** — built, and then rebuilt. The first
   version kept the four letters in `lib/cold-email.ts` and the club's details in
   browser storage, on the grounds that a table nobody edits is a table nobody
@@ -170,9 +172,8 @@ Every row here shipped; kept for the reasoning rather than as a plan.
   contacts and activity. Deduplication after the fact is the actual club
   problem, since two officers add the same factory a month apart.
 - **Required-fields-by-stage** (Salesforce validation rules, lightweight
-  version). A company cannot reach "committed" without a named contact and a
-  date. One check constraint or one trigger; stops the pipeline chart from
-  lying.
+  version). Tried: a trigger refusing "committed" without a contact and a
+  date. Reverted — see above. If this comes back it should nag, not refuse.
 - **Templates with merge fields** (HubSpot sequences, minus the sending). #6
   already plans this. Worth confirming it stays a `mailto:` handoff — the moment
   the app sends mail on your behalf it inherits deliverability, unsubscribes and

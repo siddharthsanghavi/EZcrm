@@ -84,9 +84,6 @@ export async function saveCompany(formData: FormData) {
     notes: text(formData.get('notes')),
     type: text(formData.get('type')),
     tier: text(formData.get('tier')),
-    city: text(formData.get('city')),
-    region: text(formData.get('region')),
-    address: text(formData.get('address')),
     phone: text(formData.get('phone')),
     employees: Number.isFinite(employees) ? employees : null,
     owner_id: text(formData.get('owner_id')),
@@ -94,9 +91,42 @@ export async function saveCompany(formData: FormData) {
     close_date: text(formData.get('close_date')),
   };
 
+  // The form still carries one address, because "add a company" should not
+  // start with a location editor. It writes the company's primary location;
+  // every location after the first is added from the company page.
+  const place = {
+    address: text(formData.get('address')),
+    city: text(formData.get('city')),
+    region: text(formData.get('region')),
+  };
+  const hasPlace = Boolean(place.address || place.city || place.region);
+
   if (id) {
     const { error } = await supabase.from('companies').update(record).eq('id', id);
     if (error) return { error: error.message };
+
+    // Update the primary in place rather than adding a second one: this form
+    // edits the company's address, it does not open a new site.
+    const { data: existing } = await supabase
+      .from('company_locations')
+      .select('id')
+      .eq('company_id', id)
+      .eq('is_primary', true)
+      .maybeSingle();
+
+    if (existing) {
+      const { error: placeError } = await supabase
+        .from('company_locations')
+        .update(place)
+        .eq('id', existing.id);
+      if (placeError) return { error: placeError.message };
+    } else if (hasPlace) {
+      const { error: placeError } = await supabase
+        .from('company_locations')
+        .insert({ ...place, company_id: id, is_primary: true, created_by: profile.id });
+      if (placeError) return { error: placeError.message };
+    }
+
     revalidatePath(`/companies/${id}`);
   } else {
     const { data, error } = await supabase
@@ -105,11 +135,135 @@ export async function saveCompany(formData: FormData) {
       .select('id')
       .single();
     if (error) return { error: error.message };
+
+    if (hasPlace) {
+      const { error: placeError } = await supabase
+        .from('company_locations')
+        .insert({ ...place, company_id: data.id, is_primary: true, created_by: profile.id });
+      if (placeError) return { error: placeError.message };
+    }
+
     revalidatePath('/companies');
+    revalidatePath('/map');
     redirect(`/companies/${data.id}`);
   }
 
   revalidatePath('/companies');
+  revalidatePath('/map');
+  return { ok: true };
+}
+
+// ------------------------------------------------------------------ locations
+
+/** Everything a location form submits. Shared by add and edit. */
+function locationFields(formData: FormData) {
+  return {
+    label: text(formData.get('label')),
+    address: text(formData.get('address')),
+    city: text(formData.get('city')),
+    region: text(formData.get('region')),
+    county: text(formData.get('county')),
+  };
+}
+
+/** Revalidate every page a location shows up on. */
+function revalidateLocations(companyId: string) {
+  revalidatePath(`/companies/${companyId}`);
+  revalidatePath('/companies');
+  revalidatePath('/map');
+}
+
+export async function addLocation(formData: FormData) {
+  const { profile, supabase } = await requireMember();
+
+  const companyId = text(formData.get('company_id'));
+  if (!companyId) return { error: 'No company given.' };
+
+  const fields = locationFields(formData);
+  if (!fields.address && !fields.city && !fields.region) {
+    return { error: 'Give the location an address, a city or a region.' };
+  }
+
+  // A new location is never primary unless asked for; the database promotes it
+  // anyway when it is the company's first.
+  const { error } = await supabase.from('company_locations').insert({
+    ...fields,
+    company_id: companyId,
+    is_primary: formData.get('is_primary') === 'on',
+    created_by: profile.id,
+  });
+  if (error) return { error: error.message };
+
+  revalidateLocations(companyId);
+  return { ok: true };
+}
+
+export async function updateLocation(formData: FormData) {
+  const { supabase } = await requireMember();
+
+  const id = text(formData.get('id'));
+  const companyId = text(formData.get('company_id'));
+  if (!id || !companyId) return { error: 'No location given.' };
+
+  const fields = locationFields(formData);
+  if (!fields.address && !fields.city && !fields.region) {
+    return { error: 'Give the location an address, a city or a region.' };
+  }
+
+  // Editing the address invalidates the point: the coordinates still describe
+  // where the old address was. Clearing them puts the row back in the
+  // geocoder's queue rather than leaving a pin on the wrong building.
+  const { data: before } = await supabase
+    .from('company_locations')
+    .select('address, city')
+    .eq('id', id)
+    .maybeSingle();
+
+  const moved =
+    before && (before.address !== fields.address || before.city !== fields.city);
+
+  const { error } = await supabase
+    .from('company_locations')
+    .update(moved ? { ...fields, latitude: null, longitude: null, geo_precision: null, area: null } : fields)
+    .eq('id', id);
+  if (error) return { error: error.message };
+
+  revalidateLocations(companyId);
+  return { ok: true };
+}
+
+export async function deleteLocation(formData: FormData) {
+  const { supabase } = await requireMember();
+
+  const id = text(formData.get('id'));
+  const companyId = text(formData.get('company_id'));
+  if (!id || !companyId) return { error: 'No location given.' };
+
+  // Deleting the primary promotes the next one — the database does that, so
+  // there is no "which one is primary now" decision to make here.
+  const { error } = await supabase.from('company_locations').delete().eq('id', id);
+  if (error) return { error: error.message };
+
+  revalidateLocations(companyId);
+  return { ok: true };
+}
+
+export async function setPrimaryLocation(formData: FormData) {
+  const { supabase } = await requireMember();
+
+  const id = text(formData.get('id'));
+  const companyId = text(formData.get('company_id'));
+  if (!id || !companyId) return { error: 'No location given.' };
+
+  // Demoting the previous primary is the trigger's job; setting this one is
+  // the whole statement.
+  const { error } = await supabase
+    .from('company_locations')
+    .update({ is_primary: true })
+    .eq('id', id);
+  if (error) return { error: error.message };
+
+  revalidateLocations(companyId);
   return { ok: true };
 }
 
@@ -118,9 +272,10 @@ export async function setCompanyStatus(formData: FormData) {
   const id = text(formData.get('id'));
   if (!id) return;
 
-  // The database refuses "committed" without a contact and a date, and says why
-  // in the exception. Surfacing that beats a silent no-op, which is what an
-  // ignored error would look like from the dropdown.
+  // Nothing gates a status change any more (016 dropped the committed gate),
+  // but the database can still say no — a role change mid-session, say — and
+  // surfacing that beats a silent no-op, which is what an ignored error would
+  // look like from the dropdown.
   const { error } = await supabase
     .from('companies')
     .update({ status: oneOf(formData.get('status'), STATUSES, 'prospect') })
@@ -228,6 +383,33 @@ export async function saveContact(formData: FormData) {
   const first_name = text(formData.get('first_name'));
   if (!first_name) return { error: 'First name is required.' };
 
+  const fields = ['company_id', 'last_name', 'email', 'phone', 'title', 'notes', 'division'] as const;
+
+  if (id) {
+    // An edit updates only what the form actually submitted. A form that shows
+    // four fields must not blank the three it does not: sending the whole record
+    // would mean editing somebody's job title silently cleared their division,
+    // their notes, and — worst — the company they belong to.
+    const patch: Record<string, string | null> = { first_name };
+    for (const field of fields) {
+      if (formData.has(field)) patch[field] = text(formData.get(field));
+    }
+
+    const { error } = await supabase.from('contacts').update(patch).eq('id', id);
+    if (error) return { error: error.message };
+
+    revalidatePath('/contacts');
+    // The company is not necessarily in the form, so it is read back rather
+    // than assumed — otherwise editing from the company page fails to refresh it.
+    const { data: row } = await supabase
+      .from('contacts')
+      .select('company_id')
+      .eq('id', id)
+      .maybeSingle();
+    if (row?.company_id) revalidatePath(`/companies/${row.company_id}`);
+    return { ok: true };
+  }
+
   const record = {
     company_id: text(formData.get('company_id')),
     first_name,
@@ -239,14 +421,50 @@ export async function saveContact(formData: FormData) {
     division: text(formData.get('division')),
   };
 
-  const { error } = id
-    ? await supabase.from('contacts').update(record).eq('id', id)
-    : await supabase.from('contacts').insert({ ...record, created_by: profile.id });
+  const { error } = await supabase
+    .from('contacts')
+    .insert({ ...record, created_by: profile.id });
 
   if (error) return { error: error.message };
 
   revalidatePath('/contacts');
   if (record.company_id) revalidatePath(`/companies/${record.company_id}`);
+  return { ok: true };
+}
+
+/**
+ * Attach an existing unlinked contact to this company.
+ *
+ * A CSV of contacts whose `company` column matches nothing imports them with no
+ * company — the importer says so and carries on, which is right, but until now
+ * there was no way to put them where they belong short of editing the row.
+ *
+ * Only contacts that have NO company can be attached, and that is enforced in
+ * the statement rather than checked first: `is('company_id', null)` means two
+ * members doing this at once cannot quietly move somebody off another company's
+ * page. A zero-row update is that race, not a missing contact.
+ */
+export async function attachContact(formData: FormData) {
+  const { supabase } = await requireMember();
+
+  const contactId = text(formData.get('contact_id'));
+  const companyId = text(formData.get('company_id'));
+  if (!contactId || !companyId) return { error: 'Pick a contact to add.' };
+
+  const { data, error } = await supabase
+    .from('contacts')
+    .update({ company_id: companyId })
+    .eq('id', contactId)
+    .is('company_id', null)
+    .select('id');
+
+  if (error) return { error: error.message };
+  if (!data || data.length === 0) {
+    return { error: 'That contact already belongs to a company. Reload the page.' };
+  }
+
+  revalidatePath('/contacts');
+  revalidatePath(`/companies/${companyId}`);
   return { ok: true };
 }
 

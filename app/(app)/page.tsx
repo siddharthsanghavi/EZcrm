@@ -6,9 +6,9 @@ import {
   STATUS_LABELS,
   STATUSES,
   canWrite,
+  coldFilter,
   daysSince,
   displayName,
-  isCold,
   sinceLabel,
   type Status,
 } from '@/lib/types';
@@ -26,41 +26,64 @@ export default async function Dashboard() {
   const writable = canWrite(await currentProfile());
   const today = new Date().toISOString().slice(0, 10);
 
-  const [{ data: companies }, { data: tasks }, feed] = await Promise.all([
-    supabase
-      .from('companies')
-      .select('id, name, status, last_touch_at, profiles!companies_owner_id_fkey(full_name, email)')
-      .order('last_touch_at', { ascending: true, nullsFirst: true }),
-    supabase
-      .from('tasks')
-      .select('id, title, due_date, done, company_id, companies(name)')
-      .eq('done', false)
-      .order('due_date', { ascending: true, nullsFirst: false })
-      .limit(8),
-    // Not just logged outreach any more: everything anyone did. See
-    // supabase/migrations/013_deletions_audit_roles_and_org_chart.sql.
-    loadFeed({ limit: 8 }),
-  ]);
+  // The rotting rules decide which stages can go cold at all, so the cold query
+  // cannot be built until they are loaded.
+  const rotting = await loadRottingRules();
+
+  // Every count here is a `head: true` count, never a length. Selecting the rows
+  // and counting them in TypeScript caps silently at the API's default row limit
+  // — at 1,267 companies the dashboard read "1,000 tracked, 0 contacted", because
+  // the one contacted company sorted past the cap.
+  const [total, statusCounts, { data: tasks }, { data: coldRows, count: coldCount }, feed] =
+    await Promise.all([
+      supabase.from('companies').select('id', { count: 'exact', head: true }),
+      Promise.all(
+        STATUSES.map((s) =>
+          supabase.from('companies').select('id', { count: 'exact', head: true }).eq('status', s),
+        ),
+      ),
+      supabase
+        .from('tasks')
+        .select('id, title, due_date, done, company_id, companies(name)')
+        .eq('done', false)
+        .order('due_date', { ascending: true, nullsFirst: false })
+        .limit(8),
+      // Anything sitting in a stage without a logged touch for longer than that
+      // stage tolerates is the thing most likely to quietly die, so surface it
+      // above everything else. Filtered server-side by the same rule `isCold`
+      // applies, ordered worst-first, and only the five rendered are fetched —
+      // the badge uses the exact count rather than the page length.
+      supabase
+        .from('companies')
+        .select(
+          'id, name, status, last_touch_at, profiles!companies_owner_id_fkey(full_name, email)',
+          { count: 'exact' },
+        )
+        .or(coldFilter(rotting))
+        .order('last_touch_at', { ascending: true, nullsFirst: true })
+        .range(0, 4),
+      // Not just logged outreach any more: everything anyone did. See
+      // supabase/migrations/013_deletions_audit_roles_and_org_chart.sql.
+      loadFeed({ limit: 8 }),
+    ]);
 
   // Sequential on purpose: the progress queries depend on which targets are set,
   // and an unset one is never queried at all.
-  const rotting = await loadRottingRules();
   const goal = await loadGoal();
   const progress = await loadGoalProgress(goal);
 
-  const all = companies ?? [];
+  const totalCompanies = total.count ?? 0;
   const counts = Object.fromEntries(
-    STATUSES.map((s) => [s, all.filter((c) => c.status === s).length]),
+    STATUSES.map((s, i) => [s, statusCounts[i].count ?? 0]),
   ) as Record<Status, number>;
 
   const overdue = (tasks ?? []).filter((t) => t.due_date && t.due_date < today).length;
 
-  // Anything sitting in an active stage without a logged touch in three weeks
-  // is the thing most likely to quietly die, so surface it above everything
-  // else. Already ordered oldest-touch-first by the query, so the top of this
-  // list is the worst of it.
-  const cold = all.filter((c) => isCold(c.status as Status, c.last_touch_at, rotting));
-  // Never-touched has no day count, so it anchors the bar at full length.
+  const cold = coldRows ?? [];
+  const coldTotal = coldCount ?? 0;
+  // Never-touched has no day count, so it anchors the bar at full length. The
+  // list is ordered worst-first, so the worst of the rendered rows is the right
+  // thing to scale the bars against.
   const worstCold = Math.max(0, ...cold.map((c) => daysSince(c.last_touch_at) ?? Infinity).filter(Number.isFinite));
 
   return (
@@ -68,7 +91,7 @@ export default async function Dashboard() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
         <p className="mt-1 text-sm text-black/55">
-          {all.length} companies tracked
+          {totalCompanies.toLocaleString()} companies tracked
           {overdue > 0 && <> · {overdue} overdue task{overdue === 1 ? '' : 's'}</>}
         </p>
       </div>
@@ -92,7 +115,7 @@ export default async function Dashboard() {
           ))}
         </div>
 
-        {all.length > 0 && (
+        {totalCompanies > 0 && (
           <div className="mt-4 flex h-[5px] gap-0.5 overflow-hidden rounded-full">
             {STATUSES.filter((s) => counts[s] > 0).map((status) => (
               <span
@@ -106,7 +129,7 @@ export default async function Dashboard() {
         )}
       </section>
 
-      {cold.length > 0 && (
+      {coldTotal > 0 && (
         <section className="card overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-black/[0.08] px-5 py-3">
             <div className="flex items-center gap-2.5">
@@ -120,13 +143,13 @@ export default async function Dashboard() {
               </svg>
               <h2 className="text-sm font-semibold">Going cold</h2>
               <span className="rounded-md bg-warn/[0.14] px-1.5 py-px text-[11.5px] font-semibold text-warn">
-                {cold.length}
+                {coldTotal}
               </span>
               <span className="hidden text-xs text-black/45 sm:inline">
                 untouched {COLD_AFTER_DAYS}+ days
               </span>
             </div>
-            {cold.length > 5 && (
+            {coldTotal > 5 && (
               <Link href="/companies?cold=1" className="text-xs text-black/45 hover:text-ink">
                 See all →
               </Link>
@@ -134,7 +157,7 @@ export default async function Dashboard() {
           </div>
 
           <ul className="divide-y divide-black/[0.06]">
-            {cold.slice(0, 5).map((c) => {
+            {cold.map((c) => {
               const owner = c.profiles as unknown as
                 | { full_name: string | null; email: string }
                 | null;

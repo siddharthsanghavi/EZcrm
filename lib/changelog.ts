@@ -16,6 +16,29 @@ export type Change = {
 
 export const CHANGELOG: Change[] = [
   {
+    date: '2026-09-21',
+    title: 'Marking a company committed no longer needs a date or a contact first',
+    notes: [
+      'The rule that refused “Committed” until a close date and a contact were on file is gone. It meant the person who had just got the yes was sent to two other forms before they could record it, and the second one only appeared after the first was done.',
+      'Close date and amount are still there and the pipeline still uses them — add them when you have them.',
+      'The pipeline board, the map, the filter dropdowns and the CSV exports all stopped at 1,000 rows without saying so. The board showed 994 prospects while the directory held 1,260, and “export everything” wrote 1,000 of 1,268 companies. All of them now read every row.',
+    ],
+  },
+  {
+    date: '2026-09-10',
+    title: 'A company can have more than one location',
+    notes: [
+      'A company can now have as many locations as it actually has — a head office, a plant, a distribution centre — each with its own name, address, city and region. Add them from the company page.',
+      'One location is the primary. It is the one shown on the company header, in the list and in search results, and you can change which it is at any time.',
+      'The map plots every location, not just one per company: a manufacturer with three plants is three pins, and each opens the same company. The region bubbles still count companies, so the totals mean what they did before.',
+      'Filtering by region matches a company if any of its locations is in that region, and searching by city does the same.',
+      'The dashboard counts every company again. It had been showing 1,000 and no contacted companies at all — it was counting rows it had fetched rather than asking how many there were, and the fetch stopped at a thousand.',
+      'There is a Locations CSV export alongside Companies and Contacts, because a company with three plants cannot be flattened back into one row.',
+      'Contacts can be edited. Hover somebody in a company’s contact list and press Edit to change their name, title, email or phone — for when the person you have been emailing gets promoted. Who they report to stays under Place, one click away. Contacts can also be edited from the Contacts list, which is the only place a contact with no company can be reached.',
+      'A contact who is in the CRM but belongs to no company — usually from a contacts CSV whose company column matched nothing — can now be added to a company from that company’s Contacts panel, instead of being retyped.',
+    ],
+  },
+  {
     date: '2026-09-06',
     title: 'A board you can drag, money in the pipeline, files, and search',
     notes: [

@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { currentProfile, serverClient } from '@/lib/supabase';
 import { contactName, draftEmail, draftsToCsv, suggestTemplate } from '@/lib/cold-email';
 import { loadClubDetails, loadTemplates } from '@/lib/settings';
+import { primaryLocation } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,7 +45,7 @@ export async function GET(request: NextRequest) {
   const [{ data: companies, error }, { data: contacts }] = await Promise.all([
     supabase
       .from('companies')
-      .select('id, name, type, city, industry, interest, tier, status')
+      .select('id, name, type, industry, interest, tier, status, company_locations(city, region, is_primary)')
       .in('id', ids)
       .order('name'),
     supabase
@@ -58,7 +59,13 @@ export async function GET(request: NextRequest) {
 
   const sender = { name: profile.full_name?.trim() || profile.email.split('@')[0], email: profile.email };
 
-  const rows = (companies ?? []).map((company) => {
+  const rows = (companies ?? []).map((row) => {
+    // The letter says "your Rome site"; the primary location is the one that
+    // means, since 015 moved city off the company itself.
+    const place = primaryLocation(
+      row.company_locations as { city: string | null; region: string | null; is_primary: boolean }[] | null,
+    );
+    const company = { ...row, city: place?.city ?? null };
     const theirs = (contacts ?? []).filter((c) => c.company_id === company.id);
     const contact = theirs.find((c) => c.email) ?? theirs[0] ?? null;
 

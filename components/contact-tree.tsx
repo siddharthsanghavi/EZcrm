@@ -1,13 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { setContactPlacement } from '@/app/actions';
+import { saveContact, setContactPlacement } from '@/app/actions';
 import { buildOrgTree, contactName, type Contact, type OrgNode } from '@/lib/types';
 
 type Person = Pick<
   Contact,
   'id' | 'company_id' | 'first_name' | 'last_name' | 'title' | 'email' | 'phone' | 'reports_to' | 'division'
 >;
+
+type Editing = { id: string; mode: 'place' | 'details' } | null;
 
 /**
  * The contacts at one company, drawn as who reports to whom.
@@ -32,7 +34,10 @@ export function ContactTree({
   companyId: string;
   writable: boolean;
 }) {
-  const [editing, setEditing] = useState<string | null>(null);
+  // Which row is open, and which of the two panels. They stay separate because
+  // they are separate decisions with separate rules: who somebody reports to is
+  // checked for loops against the rest of the tree, their job title is not.
+  const [editing, setEditing] = useState<Editing>(null);
 
   if (contacts.length === 0) return null;
 
@@ -91,11 +96,11 @@ function Branch({
   contacts: Person[];
   companyId: string;
   writable: boolean;
-  editing: string | null;
-  setEditing: (id: string | null) => void;
+  editing: Editing;
+  setEditing: (next: Editing) => void;
 }) {
   const c = node.contact;
-  const open = editing === c.id;
+  const open = editing?.id === c.id ? editing.mode : null;
 
   // Anyone in this person's own subtree would close a loop, so they are not
   // offered as a manager. The database refuses it too; leaving it out of the
@@ -131,17 +136,102 @@ function Branch({
         </div>
 
         {writable && !open && (
-          <button
-            type="button"
-            onClick={() => setEditing(c.id)}
-            className="shrink-0 text-xs text-black/30 opacity-0 transition group-hover:opacity-100 hover:text-ink"
-          >
-            Place
-          </button>
+          <div className="flex shrink-0 gap-2 opacity-0 transition group-hover:opacity-100">
+            <button
+              type="button"
+              onClick={() => setEditing({ id: c.id, mode: 'details' })}
+              className="text-xs text-black/30 hover:text-ink"
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditing({ id: c.id, mode: 'place' })}
+              className="text-xs text-black/30 hover:text-ink"
+            >
+              Place
+            </button>
+          </div>
         )}
       </div>
 
-      {open && (
+      {open === 'details' && (
+        <form
+          action={async (formData) => {
+            await saveContact(formData);
+            setEditing(null);
+          }}
+          className="space-y-2 border-y border-black/[0.07] bg-black/[0.02] px-5 py-3"
+        >
+          {/* Only the fields shown are submitted, and saveContact patches only
+              what it is given — so this form cannot blank their division, their
+              notes, or the company they belong to. */}
+          <input type="hidden" name="id" value={c.id} />
+
+          <div className="flex gap-2">
+            <label className="block flex-1 text-xs text-black/45">
+              First name
+              <input
+                name="first_name"
+                required
+                defaultValue={c.first_name}
+                className="field mt-1 py-1.5"
+              />
+            </label>
+            <label className="block flex-1 text-xs text-black/45">
+              Last name
+              <input name="last_name" defaultValue={c.last_name ?? ''} className="field mt-1 py-1.5" />
+            </label>
+          </div>
+
+          <label className="block text-xs text-black/45">
+            Title
+            <input
+              name="title"
+              defaultValue={c.title ?? ''}
+              placeholder="Operations Manager"
+              className="field mt-1 py-1.5"
+            />
+          </label>
+
+          <label className="block text-xs text-black/45">
+            Email
+            <input
+              name="email"
+              type="email"
+              defaultValue={c.email ?? ''}
+              className="field mt-1 py-1.5"
+            />
+          </label>
+
+          <label className="block text-xs text-black/45">
+            Phone
+            <input name="phone" defaultValue={c.phone ?? ''} className="field mt-1 py-1.5" />
+          </label>
+
+          <div className="flex items-center gap-2">
+            <button className="btn-ghost py-1.5 text-xs">Save</button>
+            <button
+              type="button"
+              onClick={() => setEditing(null)}
+              className="text-xs text-black/40 hover:text-ink"
+            >
+              Cancel
+            </button>
+            {/* A promotion usually moves somebody up the tree as well, and that
+                lives in the other panel — say so rather than let them look. */}
+            <button
+              type="button"
+              onClick={() => setEditing({ id: c.id, mode: 'place' })}
+              className="ml-auto text-xs text-black/35 hover:text-ink"
+            >
+              Reporting line →
+            </button>
+          </div>
+        </form>
+      )}
+
+      {open === 'place' && (
         <form
           action={async (formData) => {
             await setContactPlacement(formData);

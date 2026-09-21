@@ -67,14 +67,16 @@ export async function runGeocodeBatch(limit = 150): Promise<GeocodeResult> {
   }
 }
 
-/** How many companies still have a street address but only a town-centre pin. */
+/** How many locations still have a street address but only a town-centre pin. */
 export async function geocodePending(): Promise<number> {
   const supabase = await serverClient();
+  // `neq` alone drops the rows where geo_precision is null, which is every
+  // location that has never been geocoded — exactly the ones being counted.
   const { count } = await supabase
-    .from('companies')
+    .from('company_locations')
     .select('id', { count: 'exact', head: true })
     .not('address', 'is', null)
     .not('address', 'ilike', '%verify%')
-    .neq('geo_precision', 'address');
+    .or('geo_precision.is.null,geo_precision.neq.address');
   return count ?? 0;
 }

@@ -6,7 +6,21 @@ import { INTERESTS, STATUS_LABELS, STATUSES, TIERS, type Company } from '@/lib/t
 
 type State = { error?: string; ok?: boolean } | null;
 
-export function CompanyForm({ company }: { company?: Company }) {
+/**
+ * Create or edit one company, including its primary location.
+ *
+ * The address fields here write the company's PRIMARY location, not a new one:
+ * "add a company" should not open a location editor, and a company that turns
+ * out to have three plants grows them from its own page afterwards. See
+ * components/locations-panel.tsx.
+ */
+export function CompanyForm({
+  company,
+  location,
+}: {
+  company?: Company;
+  location?: { address: string | null; city: string | null; region: string | null } | null;
+}) {
   const [state, action, pending] = useActionState<State, FormData>(
     async (_prev, formData) => (await saveCompany(formData)) ?? null,
     null,
@@ -116,14 +130,14 @@ export function CompanyForm({ company }: { company?: Company }) {
           <label className="label" htmlFor="city">
             City
           </label>
-          <input id="city" name="city" defaultValue={company?.city ?? ''} className="field" />
+          <input id="city" name="city" defaultValue={location?.city ?? ''} className="field" />
         </div>
 
         <div>
           <label className="label" htmlFor="region">
             Region
           </label>
-          <input id="region" name="region" defaultValue={company?.region ?? ''} className="field" />
+          <input id="region" name="region" defaultValue={location?.region ?? ''} className="field" />
         </div>
 
         <div>
@@ -181,7 +195,7 @@ export function CompanyForm({ company }: { company?: Company }) {
           <label className="label" htmlFor="address">
             Address
           </label>
-          <input id="address" name="address" defaultValue={company?.address ?? ''} className="field" />
+          <input id="address" name="address" defaultValue={location?.address ?? ''} className="field" />
         </div>
 
         <div className="sm:col-span-2">

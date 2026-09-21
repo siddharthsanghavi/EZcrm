@@ -158,12 +158,17 @@ export type Company = {
   notes: string | null;
   type: string | null;
   tier: string | null;
-  city: string | null;
-  region: string | null;
-  address: string | null;
   phone: string | null;
   employees: number | null;
   owner_id: string | null;
+  /**
+   * Every region and city across this company's locations, mirrored back by
+   * trigger so the list page can filter and count without a join. Derived —
+   * `company_locations` is the only place a location is edited. See
+   * supabase/migrations/015_company_locations.sql.
+   */
+  location_regions: string[];
+  location_cities: string[];
   /** What the club expects this to be worth, if anything. */
   amount: number | null;
   /** When it lands — required before a company can be marked committed. */
@@ -175,6 +180,61 @@ export type Company = {
   created_at: string;
   updated_at: string;
 };
+
+/**
+ * One place a company is. A company has zero or more, exactly one of which is
+ * primary whenever it has any — the database enforces that, not this type.
+ *
+ * Location used to be eight columns on `companies`, which said a manufacturer
+ * with three plants had one address. See
+ * supabase/migrations/015_company_locations.sql.
+ */
+export type CompanyLocation = {
+  id: string;
+  company_id: string;
+  /** "Head office", "Plant 2". Null when a single location needs no name. */
+  label: string | null;
+  address: string | null;
+  city: string | null;
+  region: string | null;
+  county: string | null;
+  /** Map grouping, derived from the point by `ez_area`. */
+  area: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  /** 'address' once street-geocoded; 'city' while still a city centroid. */
+  geo_precision: string | null;
+  is_primary: boolean;
+  sort: number;
+  created_at: string;
+  updated_at: string;
+};
+
+/** The one that stands in wherever there is room for a single place. */
+export function primaryLocation<T extends { is_primary: boolean }>(
+  locations: T[] | null | undefined,
+): T | null {
+  const all = locations ?? [];
+  return all.find((l) => l.is_primary) ?? all[0] ?? null;
+}
+
+/** "Plant 2 — 14 Mill Road, Rome, GA", trimmed of whatever is missing. */
+export function locationLabel(l: {
+  label?: string | null;
+  address?: string | null;
+  city?: string | null;
+  region?: string | null;
+}): string {
+  const place = [l.address, l.city, l.region].filter(Boolean).join(', ');
+  if (l.label && place) return `${l.label} — ${place}`;
+  return l.label || place || 'Unnamed location';
+}
+
+/** The short form for a list row or a search hit: city, else region. */
+export function locationSummary(l: { city?: string | null; region?: string | null } | null) {
+  if (!l) return null;
+  return l.city || l.region || null;
+}
 
 export type Contact = {
   id: string;
@@ -442,8 +502,9 @@ export function daysSince(iso: string | null | undefined): number | null {
  * — a company that said yes in March and has heard nothing since is exactly the
  * one you lose.
  *
- * The companies page has to express the same rule in PostgREST terms to filter
- * server-side, so if you change this, change `coldFilter` with it.
+ * The dashboard and the companies page both express the same rule in PostgREST
+ * terms to filter server-side, so if you change this, change `coldFilter` with
+ * it.
  */
 export function isCold(
   status: Status,
@@ -459,6 +520,24 @@ export function isCold(
 /** Stages that can go cold at all, given the club's rules. */
 export function rottingStages(rules?: RottingRules | null): Status[] {
   return STATUSES.filter((s) => rotAfter(s, rules) !== null);
+}
+
+/**
+ * `isCold` in PostgREST terms, for `.or()`.
+ *
+ * Each stage tolerates a different silence, so this is an OR of one clause per
+ * stage. Anywhere that needs the going-cold list has to filter server-side —
+ * fetching every company and filtering in TypeScript silently truncates at the
+ * API's default row cap — so both callers share this one expression. Change it
+ * and `isCold` together.
+ */
+export function coldFilter(rules?: RottingRules | null): string {
+  return rottingStages(rules)
+    .map((s) => {
+      const before = new Date(Date.now() - (rotAfter(s, rules) ?? 0) * 864e5).toISOString();
+      return `and(status.eq.${s},or(last_touch_at.is.null,last_touch_at.lt.${before}))`;
+    })
+    .join(',');
 }
 
 /**

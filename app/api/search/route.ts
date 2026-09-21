@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { currentProfile, serverClient } from '@/lib/supabase';
-import { contactName } from '@/lib/types';
+import { contactName, locationSummary, primaryLocation } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,11 +36,24 @@ export async function GET(request: NextRequest) {
 
   const supabase = await serverClient();
 
+  // City lives on company_locations now, so a search for "Rome" has to reach
+  // the company through its places. Resolved first, then folded into the same
+  // single company query so the 10-hit cap still means ten companies.
+  const { data: byCity } = await supabase
+    .from('company_locations')
+    .select('company_id')
+    .ilike('city', term)
+    .limit(50);
+  const cityIds = [...new Set((byCity ?? []).map((r) => r.company_id as string))];
+
+  const companyClauses = [`name.ilike.${term}`, `industry.ilike.${term}`];
+  if (cityIds.length) companyClauses.push(`id.in.(${cityIds.join(',')})`);
+
   const [{ data: companies }, { data: contacts }] = await Promise.all([
     supabase
       .from('companies')
-      .select('id, name, city, industry, status, archived_at')
-      .or(`name.ilike.${term},city.ilike.${term},industry.ilike.${term}`)
+      .select('id, name, industry, status, archived_at, company_locations(city, is_primary)')
+      .or(companyClauses.join(','))
       .order('name')
       .limit(10),
     supabase
@@ -56,7 +69,14 @@ export async function GET(request: NextRequest) {
       id: c.id as string,
       href: `/companies/${c.id}`,
       label: c.name as string,
-      detail: [c.city, c.industry, c.archived_at ? 'archived' : null].filter(Boolean).join(' · ') || null,
+      detail:
+        [
+          locationSummary(primaryLocation(c.company_locations)),
+          c.industry,
+          c.archived_at ? 'archived' : null,
+        ]
+          .filter(Boolean)
+          .join(' · ') || null,
     })),
     ...(contacts ?? []).map((c) => {
       const company = c.companies as unknown as { name: string } | null;

@@ -72,12 +72,14 @@ Deno.serve(async (req) => {
 
   const db = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
+  // Locations, not companies: a company with three plants has three addresses
+  // to place. See supabase/migrations/015_company_locations.sql.
   const { data: pending, error } = await db
-    .from('companies')
+    .from('company_locations')
     .select('id, address, city, latitude, longitude')
     .not('address', 'is', null)
     .not('address', 'ilike', '%verify%')
-    .neq('geo_precision', 'address')
+    .or('geo_precision.is.null,geo_precision.neq.address')
     .limit(limit);
 
   if (error) return Response.json({ error: error.message }, { status: 500 });
@@ -139,7 +141,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    const { error: upErr } = await db.rpc('set_company_point', {
+    const { error: upErr } = await db.rpc('set_location_point', {
       p_id: cells[0],
       p_lat: lat,
       p_lon: lon,
@@ -148,11 +150,11 @@ Deno.serve(async (req) => {
   }
 
   const { count: remaining } = await db
-    .from('companies')
+    .from('company_locations')
     .select('id', { count: 'exact', head: true })
     .not('address', 'is', null)
     .not('address', 'ilike', '%verify%')
-    .neq('geo_precision', 'address');
+    .or('geo_precision.is.null,geo_precision.neq.address');
 
   return Response.json({
     processed: rows.length,

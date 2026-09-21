@@ -17,12 +17,17 @@ const clean = (v: string | undefined) => {
  * to risk a gateway timeout; 500 at a time keeps each request comfortable.
  * Returns the number created, or an error message.
  */
+/**
+ * Returns the new rows' ids in insert order, so a caller can attach children to
+ * them. PostgREST returns `select('id')` in the order the rows were sent, which
+ * is what lets the company import place each row's location.
+ */
 async function insertChunked(
   supabase: Awaited<ReturnType<typeof serverClient>>,
   table: string,
   rows: Record<string, unknown>[],
-): Promise<number | string> {
-  let created = 0;
+): Promise<string[] | string> {
+  const ids: string[] = [];
 
   for (let i = 0; i < rows.length; i += 500) {
     const { data, error } = await supabase
@@ -31,10 +36,10 @@ async function insertChunked(
       .select('id');
 
     if (error) return error.message;
-    created += data.length;
+    for (const row of data) ids.push(row.id as string);
   }
 
-  return created;
+  return ids;
 }
 
 /**
@@ -108,12 +113,16 @@ export async function POST(request: Request) {
           notes: clean(row.notes),
           type: clean(row.type),
           tier: clean(row.tier ?? row.confidence),
-          city: clean(row.city),
-          region: clean(row.region),
-          address: clean(row.address),
           phone: clean(row.phone),
           employees: Number.isFinite(employees) ? employees : null,
           created_by: profile.id,
+          // Not a column any more — carried alongside the row and peeled off
+          // below into the company's primary location.
+          place: {
+            address: clean(row.address),
+            city: clean(row.city),
+            region: clean(row.region),
+          },
         },
       ];
     });
@@ -162,9 +171,33 @@ export async function POST(request: Request) {
       });
     }
 
-    const created = await insertChunked(supabase, 'companies', fresh);
-    if (typeof created === 'string') return NextResponse.json({ error: created }, { status: 400 });
+    const places = fresh.map((c) => c.place);
+    const ids = await insertChunked(
+      supabase,
+      'companies',
+      fresh.map(({ place: _place, ...company }) => company),
+    );
+    if (typeof ids === 'string') return NextResponse.json({ error: ids }, { status: 400 });
 
+    // One primary location per imported company that came with an address.
+    // A failure here must not be silent: the companies are already in, and a
+    // directory that imported 900 rows with no locations is a map with nothing
+    // on it.
+    const locations = ids
+      .map((id, i) => ({ ...places[i], company_id: id, is_primary: true, created_by: profile.id }))
+      .filter((l) => l.address || l.city || l.region);
+
+    if (locations.length) {
+      const placed = await insertChunked(supabase, 'company_locations', locations);
+      if (typeof placed === 'string') {
+        return NextResponse.json(
+          { error: `Imported ${ids.length} companies, but their locations failed: ${placed}` },
+          { status: 400 },
+        );
+      }
+    }
+
+    const created = ids.length;
     await logImport(supabase, 'companies', created);
     return NextResponse.json({ created, skipped, errors, duplicates: duplicates.slice(0, 50) });
   }
@@ -202,9 +235,10 @@ export async function POST(request: Request) {
     ];
   });
 
-  const created = await insertChunked(supabase, 'contacts', payload);
-  if (typeof created === 'string') return NextResponse.json({ error: created }, { status: 400 });
+  const inserted = await insertChunked(supabase, 'contacts', payload);
+  if (typeof inserted === 'string') return NextResponse.json({ error: inserted }, { status: 400 });
 
+  const created = inserted.length;
   await logImport(supabase, 'contacts', created);
   return NextResponse.json({ created, skipped, errors });
 }

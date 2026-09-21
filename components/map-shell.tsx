@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import type { MapCompany } from '@/components/company-map';
+import type { MapPin } from '@/components/company-map';
 
 /**
  * Client-side wrapper so the map can be loaded with `ssr: false`.
@@ -17,6 +17,6 @@ const CompanyMap = dynamic(() => import('@/components/company-map').then((m) => 
   ),
 });
 
-export function MapShell({ companies }: { companies: MapCompany[] }) {
-  return <CompanyMap companies={companies} />;
+export function MapShell({ pins }: { pins: MapPin[] }) {
+  return <CompanyMap pins={pins} />;
 }

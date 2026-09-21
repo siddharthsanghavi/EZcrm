@@ -23,7 +23,10 @@ export function ColdEmail({
   club,
   canLog,
 }: {
-  company: Pick<Company, 'id' | 'name' | 'type' | 'city' | 'industry' | 'interest' | 'tier' | 'status'>;
+  company: Pick<Company, 'id' | 'name' | 'type' | 'industry' | 'interest' | 'tier' | 'status'> & {
+    /** From the company's primary location. */
+    city: string | null;
+  };
   contacts: Person[];
   sender: { name: string; email: string };
   /** The club's own letters, from /settings. */

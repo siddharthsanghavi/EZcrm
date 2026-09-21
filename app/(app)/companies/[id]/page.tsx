@@ -17,8 +17,10 @@ import {
   displayName,
   isCold,
   money,
+  primaryLocation,
   sinceLabel,
   type Company,
+  type CompanyLocation,
   type Status,
 } from '@/lib/types';
 import { CompanyForm } from '@/components/company-form';
@@ -27,8 +29,10 @@ import { TierPicker } from '@/components/tier-picker';
 import { ActivityComposer } from '@/components/activity-composer';
 import { ContactForm } from '@/components/contact-form';
 import { ContactTree } from '@/components/contact-tree';
+import { AttachContact, type UnlinkedContact } from '@/components/attach-contact';
 import { ColdEmail } from '@/components/cold-email';
 import { Attachments, type AttachmentRow } from '@/components/attachments';
+import { LocationsPanel } from '@/components/locations-panel';
 import { StatusPicker } from '@/components/status-picker';
 import { QuickTaskForm } from '@/components/quick-task-form';
 import { TaskRow } from '@/components/task-row';
@@ -53,7 +57,9 @@ export default async function CompanyPage({
   if (!company) notFound();
 
   const [
+    { data: locations },
     { data: contacts },
+    { data: unlinked },
     { data: activities },
     { data: tasks },
     { data: members },
@@ -65,7 +71,24 @@ export default async function CompanyPage({
     rotting,
     { data: files },
   ] = await Promise.all([
-      supabase.from('contacts').select('*').eq('company_id', id).order('created_at'),
+    supabase
+      .from('company_locations')
+      .select('id, label, address, city, region, county, latitude, geo_precision, is_primary')
+      .eq('company_id', id)
+      // Primary first, then whatever order the club put them in.
+      .order('is_primary', { ascending: false })
+      .order('sort')
+      .order('created_at'),
+    supabase.from('contacts').select('*').eq('company_id', id).order('created_at'),
+    // People already in the CRM who belong to no company — usually a contacts
+    // CSV whose `company` column matched nothing. Capped: this is a picker, and
+    // a club with hundreds of orphans has an import problem, not a UI problem.
+    supabase
+      .from('contacts')
+      .select('id, first_name, last_name, title, email')
+      .is('company_id', null)
+      .order('first_name')
+      .limit(200),
     supabase
       .from('activities')
       .select('*, profiles(full_name, email)')
@@ -100,6 +123,12 @@ export default async function CompanyPage({
 
   const today = new Date().toISOString().slice(0, 10);
   const c = company as Company;
+  type LocationRow = Pick<
+    CompanyLocation,
+    'id' | 'label' | 'address' | 'city' | 'region' | 'county' | 'latitude' | 'geo_precision' | 'is_primary'
+  >;
+  const places = (locations ?? []) as LocationRow[];
+  const place = primaryLocation(places);
   const isAdmin = me?.role === 'admin';
   const writable = canWrite(me);
   const pending = request as
@@ -115,7 +144,7 @@ export default async function CompanyPage({
           ← {c.name}
         </Link>
         <h1 className="text-2xl font-semibold tracking-tight">Edit company</h1>
-        <CompanyForm company={c} />
+        <CompanyForm company={c} location={place} />
 
         {!c.archived_at && (
           <form action={setCompanyArchived} className="card p-5">
@@ -219,7 +248,10 @@ export default async function CompanyPage({
             </div>
 
             <div className="mt-1 text-sm text-black/45">
-              {[c.type, [c.city, c.region].filter(Boolean).join(' · ')].filter(Boolean).join(' — ')}
+              {[c.type, [place?.city, place?.region].filter(Boolean).join(' · ')]
+                .filter(Boolean)
+                .join(' — ')}
+              {places.length > 1 && ` · ${places.length} locations`}
               {c.employees ? ` · ~${c.employees.toLocaleString()} employees` : ''}
               {c.amount !== null && (
                 <>
@@ -300,26 +332,14 @@ export default async function CompanyPage({
 
       <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
         <div className="space-y-6">
-          {(c.notes || c.address) && (
+          {c.notes && (
             <section className="card p-5">
               <h2 className="text-sm font-semibold">Notes</h2>
-              {c.notes && (
-                <p className="mt-2 whitespace-pre-wrap text-sm text-black/70">{c.notes}</p>
-              )}
-              {c.address && (
-                <p className="mt-3 text-sm text-black/50">
-                  <a
-                    href={`https://maps.google.com/?q=${encodeURIComponent(c.address)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline hover:text-ink"
-                  >
-                    {c.address}
-                  </a>
-                </p>
-              )}
+              <p className="mt-2 whitespace-pre-wrap text-sm text-black/70">{c.notes}</p>
             </section>
           )}
+
+          <LocationsPanel companyId={id} locations={places} writable={writable} />
 
           {/* Drafting is reading — a viewer can prepare an email for somebody
               else to send, and only "Log as sent" writes. */}
@@ -330,7 +350,7 @@ export default async function CompanyPage({
             </p>
             <div className="mt-3">
               <ColdEmail
-                company={c}
+                company={{ ...c, city: place?.city ?? null }}
                 contacts={(contacts ?? []) as never}
                 sender={{ name: displayName(me), email: me?.email ?? '' }}
                 templates={templates}
@@ -409,6 +429,7 @@ export default async function CompanyPage({
             {writable && (
               <div className="border-t border-black/10 p-4">
                 <ContactForm companyId={id} compact />
+                <AttachContact companyId={id} contacts={(unlinked ?? []) as UnlinkedContact[]} />
               </div>
             )}
           </section>

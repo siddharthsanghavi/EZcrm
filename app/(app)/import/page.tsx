@@ -33,6 +33,11 @@ export default async function ImportPage() {
           <a href="/api/export?table=contacts" className="btn-ghost">
             Contacts CSV
           </a>
+          {/* Its own file: a company can have several places, and folding them
+              back into the companies row would drop all but one. */}
+          <a href="/api/export?table=locations" className="btn-ghost">
+            Locations CSV
+          </a>
           <a href="/api/export?table=activities" className="btn-ghost">
             Activity CSV
           </a>

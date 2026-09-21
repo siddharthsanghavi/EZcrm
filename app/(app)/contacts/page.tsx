@@ -3,6 +3,7 @@ import { currentProfile, serverClient } from '@/lib/supabase';
 import { canWrite, sinceLabel } from '@/lib/types';
 import { deleteContact } from '@/app/actions';
 import { ContactForm } from '@/components/contact-form';
+import { EditContact, type EditableContact } from '@/components/edit-contact';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,7 +54,9 @@ export default async function ContactsPage({
                 {contacts.map((c) => {
                   const company = c.companies as { id: string; name: string } | null;
                   return (
-                    <li key={c.id} className="flex items-start gap-4 px-5 py-3.5">
+                    // flex-wrap so the inline editor, which is full width, drops
+                    // onto its own line instead of being crushed into the row.
+                    <li key={c.id} className="flex flex-wrap items-start gap-4 px-5 py-3.5">
                       <div className="min-w-0 flex-1">
                         <div className="text-sm font-medium">
                           {c.first_name} {c.last_name}
@@ -86,10 +89,15 @@ export default async function ContactsPage({
                       })()}
 
                       {writable && (
-                        <form action={deleteContact}>
-                          <input type="hidden" name="id" value={c.id} />
-                          <button className="text-xs text-black/30 hover:text-danger">Delete</button>
-                        </form>
+                        <div className="flex shrink-0 items-center gap-3">
+                          <EditContact contact={c as EditableContact} />
+                          <form action={deleteContact}>
+                            <input type="hidden" name="id" value={c.id} />
+                            <button className="text-xs text-black/30 hover:text-danger">
+                              Delete
+                            </button>
+                          </form>
+                        </div>
                       )}
                     </li>
                   );

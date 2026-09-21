@@ -33,6 +33,37 @@ export async function serverClient() {
   );
 }
 
+/**
+ * Every row, not the first thousand.
+ *
+ * PostgREST caps a response at 1,000 rows (`db-max-rows`) whatever `.limit()`
+ * says, and says nothing when it does: `.limit(5000)` on 1,268 companies returns
+ * 1,000 with no error. The pipeline board rendered 994 prospects while the
+ * database held 1,260, and every total under it was wrong by the same amount.
+ *
+ * Pass a function that builds the query with a range applied; this walks the
+ * ranges until a page comes back short. Use it only where every row is truly
+ * needed — a board that draws all of them — and count with `head: true`
+ * everywhere else, because this is N requests, not one.
+ */
+export async function selectAll<T>(
+  page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+  pageSize = 1000,
+): Promise<{ data: T[]; error: { message: string } | null }> {
+  const all: T[] = [];
+  let from = 0;
+  for (;;) {
+    const { data, error } = await page(from, from + pageSize - 1);
+    if (error) return { data: all, error };
+    if (!data || data.length === 0) return { data: all, error: null };
+    all.push(...data);
+    // Advance by what actually came back, and stop only on an empty page. A
+    // "short page means last page" shortcut would break the moment the server
+    // cap was set below pageSize — which is precisely the bug this fixes.
+    from += data.length;
+  }
+}
+
 /** Current user's profile, or null if they aren't a club member. */
 export async function currentProfile() {
   const supabase = await serverClient();

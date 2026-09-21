@@ -9,10 +9,11 @@ type State = { error?: string; ok?: boolean } | null;
 /**
  * Status, with room for the database to say no.
  *
- * "Committed" is gated: a company cannot reach it without a contact and a date.
- * That refusal arrives as a Postgres exception, and a plain `<form action>`
- * would swallow it — the dropdown would snap back and nobody would know why. So
- * this is a client form that can show the reason.
+ * A refusal from the database arrives as a Postgres exception, and a plain
+ * `<form action>` would swallow it — the dropdown would snap back and nobody
+ * would know why. So this is a client form that can show the reason. (The
+ * committed gate that used to be the main source of those is gone since 016;
+ * this stays because the next refusal will come from somewhere else.)
  */
 export function StatusPicker({ companyId, status }: { companyId: string; status: string }) {
   const [state, action, pending] = useActionState<State, FormData>(

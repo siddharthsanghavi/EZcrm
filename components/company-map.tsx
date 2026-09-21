@@ -7,9 +7,19 @@ import 'leaflet/dist/leaflet.css';
 import 'leaflet.markercluster';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
 
-export type MapCompany = {
+/**
+ * One pin: a single located place. A company with three plants is three pins
+ * that all open the same company page, which is the whole point of
+ * supabase/migrations/015_company_locations.sql — the map used to show a
+ * manufacturer at its head office and nowhere else.
+ */
+export type MapPin = {
+  /** The location's id, not the company's. Unique per pin. */
   id: string;
+  companyId: string;
   name: string;
+  /** "Plant 2", when this company has more than one place. */
+  place: string | null;
   city: string | null;
   county: string | null;
   area: string | null;
@@ -47,7 +57,9 @@ type Group = {
   label: string;
   lat: number;
   lon: number;
+  /** Distinct companies, not pins: two plants in one region are one company. */
   total: number;
+  pins: number;
   best: number;
   tier1: number;
   tier2: number;
@@ -60,10 +72,13 @@ type Group = {
  * Regions are a stable unit — twelve of them, derived from coordinates — so the
  * bubbles stay put as you pan and each one means something.
  */
-function groupByArea(companies: MapCompany[]): Group[] {
-  const map = new Map<string, Group & { sumLat: number; sumLon: number }>();
+function groupByArea(pins: MapPin[]): Group[] {
+  const map = new Map<
+    string,
+    Group & { sumLat: number; sumLon: number; seen: Set<string> }
+  >();
 
-  for (const c of companies) {
+  for (const c of pins) {
     const key = c.area ?? c.county ?? c.city ?? 'Unknown';
     let g = map.get(key);
     if (!g) {
@@ -75,26 +90,38 @@ function groupByArea(companies: MapCompany[]): Group[] {
         sumLat: 0,
         sumLon: 0,
         total: 0,
+        pins: 0,
         best: 4,
         tier1: 0,
         tier2: 0,
         names: [],
+        seen: new Set(),
       };
       map.set(key, g);
     }
-    g.total += 1;
+    g.pins += 1;
+    // The bubble reads "12 companies", so a company with two plants in the
+    // same region has to count once — tier tallies and the name list follow
+    // the same rule, or the numbers under the bubble disagree with it.
+    const first = !g.seen.has(c.companyId);
+    if (first) {
+      g.seen.add(c.companyId);
+      g.total += 1;
+      if (c.tier === 'Tier 1') g.tier1 += 1;
+      if (c.tier === 'Tier 2') g.tier2 += 1;
+      if (g.names.length < 6) g.names.push(c.name);
+    }
+    // The centroid is over pins: it is where the places are, not where the
+    // companies are filed.
     g.sumLat += c.latitude;
     g.sumLon += c.longitude;
     g.best = Math.min(g.best, tierRank(c.tier));
-    if (c.tier === 'Tier 1') g.tier1 += 1;
-    if (c.tier === 'Tier 2') g.tier2 += 1;
-    if (g.names.length < 6) g.names.push(c.name);
   }
 
-  return [...map.values()].map((g) => ({ ...g, lat: g.sumLat / g.total, lon: g.sumLon / g.total }));
+  return [...map.values()].map((g) => ({ ...g, lat: g.sumLat / g.pins, lon: g.sumLon / g.pins }));
 }
 
-export function CompanyMap({ companies }: { companies: MapCompany[] }) {
+export function CompanyMap({ pins }: { pins: MapPin[] }) {
   const holder = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
 
@@ -112,7 +139,7 @@ export function CompanyMap({ companies }: { companies: MapCompany[] }) {
     // ---- region bubbles (low zoom) -----------------------------------------
     const areaLayer = L.layerGroup();
 
-    for (const g of groupByArea(companies)) {
+    for (const g of groupByArea(pins)) {
       const colour = colourForRank(g.best);
       const size = Math.round(Math.min(58, 26 + Math.sqrt(g.total) * 1.5));
 
@@ -188,7 +215,7 @@ export function CompanyMap({ companies }: { companies: MapCompany[] }) {
       },
     });
 
-    for (const co of companies) {
+    for (const co of pins) {
       const marker = L.circleMarker([co.latitude, co.longitude], {
         radius: co.tier === 'Tier 1' ? 8 : co.tier === 'Tier 2' ? 6.5 : 5,
         fillColor: colourFor(co.tier),
@@ -201,14 +228,16 @@ export function CompanyMap({ companies }: { companies: MapCompany[] }) {
 
       marker._tier = co.tier;
 
-      const meta = [co.type, co.city, co.county ? `${co.county} County` : null]
+      // `place` leads: on a company with several sites, "Plant 2" is the thing
+      // that tells you which pin you just clicked.
+      const meta = [co.place, co.type, co.city, co.county ? `${co.county} County` : null]
         .filter((x): x is string => Boolean(x))
         .map(escapeHtml)
         .join(' · ');
 
       marker.bindPopup(
         `<div class="pop">
-           <a class="title" href="/companies/${co.id}">${escapeHtml(co.name)}</a>
+           <a class="title" href="/companies/${co.companyId}">${escapeHtml(co.name)}</a>
            <div class="sub">${meta}</div>
            <div class="badges">
              ${co.tier ? `<span class="b" style="--c:${colourFor(co.tier)}">${escapeHtml(co.tier)}</span>` : ''}
@@ -216,7 +245,7 @@ export function CompanyMap({ companies }: { companies: MapCompany[] }) {
              ${co.owner ? `<span class="b b-owner">${escapeHtml(co.owner)}</span>` : ''}
            </div>
            ${co.precise ? '' : '<div class="approx">Approximate — pinned to town centre</div>'}
-           <a class="go" href="/companies/${co.id}">Open company &rarr;</a>
+           <a class="go" href="/companies/${co.companyId}">Open company &rarr;</a>
          </div>`,
         { maxWidth: 260 },
       );
@@ -244,10 +273,10 @@ export function CompanyMap({ companies }: { companies: MapCompany[] }) {
       map.remove();
       mapRef.current = null;
     };
-  }, [companies]);
+  }, [pins]);
 
-  const precise = companies.filter((c) => c.precise).length;
-  const areas = new Set(companies.map((c) => c.area).filter(Boolean)).size;
+  const areas = new Set(pins.map((c) => c.area).filter(Boolean)).size;
+  const companyCount = new Set(pins.map((c) => c.companyId)).size;
 
   return (
     <div className="space-y-3">
@@ -261,7 +290,8 @@ export function CompanyMap({ companies }: { companies: MapCompany[] }) {
           </span>
         ))}
         <span className="ml-auto">
-          {companies.length.toLocaleString()} companies · {areas} regions
+          {companyCount.toLocaleString()} companies · {pins.length.toLocaleString()} locations ·{' '}
+          {areas} regions
         </span>
       </div>
 

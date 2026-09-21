@@ -138,7 +138,7 @@ export function CsvImport() {
         Recognised columns: <code>{table === 'companies' ? COMPANY_COLUMNS : CONTACT_COLUMNS}</code>.
         Extra columns are ignored.
         {table === 'companies'
-          ? ' Companies whose name is already in the CRM are skipped, so re-importing tops up rather than duplicates.'
+          ? ' Companies whose name is already in the CRM are skipped, so re-importing tops up rather than duplicates. Address, city and region become the company’s primary location; add any further sites from its own page.'
           : ' A "company" column matches on name and links the contact.'}
       </p>
 

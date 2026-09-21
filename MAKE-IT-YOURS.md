@@ -96,7 +96,7 @@ you want, with a representative latitude and longitude. Then re-run it for
 existing rows:
 
 ```sql
-update companies set area = ez_area(latitude, longitude) where latitude is not null;
+update company_locations set area = ez_area(latitude, longitude) where latitude is not null;
 ```
 
 **b. The geocoder's sanity check** — [`supabase/functions/geocode/index.ts`](supabase/functions/geocode/index.ts)

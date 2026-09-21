@@ -79,11 +79,12 @@ access — this is the single easiest mistake to make in this schema.
   repository ships skeletons — the club's real letters live only in its own
   database, exportable as Markdown from `/settings`.
 
-- **"Committed" is gated.** `check_committed_ready()` refuses the transition
-  without a contact and a close date. That refusal is a Postgres exception, so
-  any UI that sets status has to be able to show it — `components/status-picker.tsx`
-  and the board both do. A plain `<form action>` swallows it and the control
-  just snaps back.
+- **"Committed" is not gated any more.** `014` made it refuse to save without
+  a contact and a close date; `016` removed that. It sent the person who had
+  just got the yes to two other forms first, one only discoverable after
+  clearing the other, and statuses stopped being updated. The status controls
+  still surface a Postgres exception if the database ever says no — keep that,
+  a plain `<form action>` swallows it and the control just snaps back.
 
 - **Going cold is per stage**, configured in `settings` under `rotting`.
   `isCold()` in `lib/types.ts` says the rule in TypeScript and the companies
@@ -175,10 +176,24 @@ access — this is the single easiest mistake to make in this schema.
 - `app/actions.ts` is `'use server'`: **every export must be an async action.**
   Exporting a plain helper from it is a build error. Shared non-action helpers
   go in `lib/` — that's why `lib/views.ts` exists.
-- `companies.area` is a computed region, assigned by nearest anchor from the
-  coordinates. The anchor list in `ez_area()` is **specific to one US state** —
-  replace it for your own geography. Anything that moves a company's point must
-  recompute it, which is why `set_company_point()` exists.
+- **A company has locations, not a location.** `company_locations` holds one row
+  per place — head office, plant, distribution centre — and `companies` has no
+  address, city, region, county, area or coordinates on it at all. Exactly one
+  location per company is `is_primary`, enforced by a partial unique index and
+  maintained by trigger; it is what stands in wherever the UI has room for a
+  single place. See `supabase/migrations/015_company_locations.sql`.
+
+- `companies.location_regions` and `location_cities` are **derived arrays**,
+  refreshed by trigger from `company_locations`. Nothing writes them by hand.
+  They exist because "a company any of whose locations is in region X" is the
+  one shape PostgREST cannot express without an inner join, and an inner join
+  returns the company once per matching location — which inflates both the page
+  and the `count: 'exact'` behind it.
+
+- `company_locations.area` is a computed region, assigned by nearest anchor from
+  the coordinates. The anchor list in `ez_area()` is **specific to one US state**
+  — replace it for your own geography. Anything that moves a location's point
+  must recompute it, which is why `set_location_point()` exists.
 
 - **Geocoding is two-tier.** Cities come from Nominatim via
   `scripts/geocode_cities.py` (a one-off, run by hand). Street addresses come
@@ -203,7 +218,7 @@ access — this is the single easiest mistake to make in this schema.
   already on file — that last check is the one that catches a confident match in
   the wrong town.
 
-- **Roughly 45% of companies can never be pinned precisely**, because their
+- **Roughly 45% of locations can never be pinned precisely**, because their
   `address` is a placeholder like `"Atlanta, GA (verify address)"`. That is a
   source-data gap, not a geocoder problem, and no service can fix it.
 - The map swaps layers at zoom 9: region bubbles below, individual companies
@@ -326,21 +341,24 @@ RLS has no per-column granularity, so the fix is column privileges plus a
 
 ## Map and geocoding
 
+One pin per **location**, not per company: a manufacturer with three plants is
+three pins that all open the same company page.
+
 Pins are placed at **city** level by default. `geocache` holds one row per place
-name; `companies.latitude/longitude` are copied from it. Regenerate with
+name; `company_locations.latitude/longitude` are copied from it. Regenerate with
 `scripts/geocode_cities.py`, load into `geocache`, then:
 
 ```sql
-update companies c set latitude = g.latitude, longitude = g.longitude
-from geocache g where g.place = c.city;
-update companies set area = ez_area(latitude, longitude) where latitude is not null;
+update company_locations l set latitude = g.latitude, longitude = g.longitude
+from geocache g where g.place = l.city;
+update company_locations set area = ez_area(latitude, longitude) where latitude is not null;
 ```
 
-New companies have no coordinates until that runs, so they won't appear on the
+New locations have no coordinates until that runs, so they won't appear on the
 map. Rows whose city is a placeholder can never be placed.
 
-`companies.geo_precision` distinguishes a real street location from a town
-centre, and the map renders them differently (solid vs faded). Street-level
+`company_locations.geo_precision` distinguishes a real street location from a
+town centre, and the map renders them differently (solid vs faded). Street-level
 geocoding is **not currently working** — free text matched poorly and structured
 queries matched worse. Only town centres are populated.
 

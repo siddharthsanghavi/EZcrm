@@ -45,7 +45,12 @@ export const CLUB_DEFAULTS: ClubDetails = {
 };
 
 export type DraftInput = {
-  company: Pick<Company, 'name' | 'type' | 'city' | 'industry' | 'interest' | 'tier' | 'status'>;
+  // `city` is not a company column any more — it comes from the company's
+  // primary location, and the caller passes it in. The letter says "your Rome
+  // site", so the one place the company is filed under is the right one.
+  company: Pick<Company, 'name' | 'type' | 'industry' | 'interest' | 'tier' | 'status'> & {
+    city: string | null;
+  };
   contact?: Pick<Contact, 'first_name' | 'last_name' | 'title' | 'email'> | null;
   /** The club member writing, for the sign-off. */
   sender: { name: string; email: string };

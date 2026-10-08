@@ -20,6 +20,10 @@ import {
   primaryLocation,
   sinceLabel,
   todayIn,
+  dayLabelIn,
+  timeLabelIn,
+  wallClockIn,
+  type CalendarEvent,
   type Company,
   type CompanyLocation,
   type Status,
@@ -34,6 +38,8 @@ import { AttachContact, type UnlinkedContact } from '@/components/attach-contact
 import { ColdEmail } from '@/components/cold-email';
 import { Attachments, type AttachmentRow } from '@/components/attachments';
 import { LocationsPanel } from '@/components/locations-panel';
+import { CompanyEvents, type CompanyEventRow } from '@/components/company-events';
+import { CapabilityEditor } from '@/components/capability-editor';
 import { StatusPicker } from '@/components/status-picker';
 import { QuickTaskForm } from '@/components/quick-task-form';
 import { TaskRow } from '@/components/task-row';
@@ -71,6 +77,8 @@ export default async function CompanyPage({
     club,
     rotting,
     { data: files },
+    { data: eventRows },
+    { data: tagRows },
   ] = await Promise.all([
     supabase
       .from('company_locations')
@@ -120,9 +128,41 @@ export default async function CompanyPage({
       .select('*, profiles(full_name, email)')
       .eq('company_id', id)
       .order('created_at', { ascending: false }),
+    supabase
+      .from('events')
+      .select('id, company_id, contact_id, kind, title, starts_at, ends_at, location, notes, created_by')
+      .eq('company_id', id)
+      .order('starts_at'),
+    // Every tag in use, so the editor suggests the club's existing vocabulary.
+    supabase.rpc('capability_counts'),
   ]);
 
   const today = todayIn(club.timeZone);
+  const tz = club.timeZone;
+  const now = Date.now();
+  const companyEvents: CompanyEventRow[] = ((eventRows ?? []) as CalendarEvent[]).map((e) => {
+    const start = wallClockIn(tz, e.starts_at);
+    const allDay = start.time === '00:00';
+    return {
+      id: e.id,
+      kind: e.kind,
+      title: e.title,
+      date: start.date,
+      start_time: allDay ? null : start.time,
+      end_time: e.ends_at ? wallClockIn(tz, e.ends_at).time : null,
+      company: null,
+      contact_id: e.contact_id,
+      location: e.location,
+      notes: e.notes,
+      dayLabel: dayLabelIn(tz, e.starts_at),
+      timeLabel: allDay
+        ? 'All day'
+        : `${timeLabelIn(tz, e.starts_at)}${e.ends_at ? `–${timeLabelIn(tz, e.ends_at)}` : ''}`,
+      past: new Date(e.ends_at ?? e.starts_at).getTime() < now,
+      canDelete: me?.role === 'admin' || e.created_by === me?.id,
+    };
+  });
+  const tagVocabulary = ((tagRows ?? []) as { tag: string }[]).map((r) => r.tag);
   const c = company as Company;
   type LocationRow = Pick<
     CompanyLocation,
@@ -340,6 +380,21 @@ export default async function CompanyPage({
             </section>
           )}
 
+          <section className="card p-5">
+            <h2 className="text-sm font-semibold">Capabilities</h2>
+            <p className="mt-0.5 text-xs text-black/45">
+              What they actually do. Click a tag to see every company that shares it.
+            </p>
+            <div className="mt-3">
+              <CapabilityEditor
+                companyId={id}
+                initial={c.capabilities ?? []}
+                suggestions={tagVocabulary}
+                writable={writable}
+              />
+            </div>
+          </section>
+
           <LocationsPanel companyId={id} locations={places} writable={writable} />
 
           {/* Drafting is reading — a viewer can prepare an email for somebody
@@ -410,6 +465,14 @@ export default async function CompanyPage({
         </div>
 
         <div className="space-y-6">
+          <CompanyEvents
+            company={{ id, name: c.name }}
+            contacts={(contacts ?? []) as { id: string; first_name: string; last_name: string | null }[]}
+            events={companyEvents}
+            today={today}
+            writable={writable}
+          />
+
           <section className="card overflow-hidden">
             <div className="flex items-center justify-between border-b border-black/10 px-5 py-3">
               <h2 className="text-sm font-semibold">Contacts</h2>
@@ -417,6 +480,23 @@ export default async function CompanyPage({
                 {STATUS_LABELS[c.status as Status]}
               </span>
             </div>
+
+            {/* The usual reason a warm conversation never turns into a tour:
+                somebody likes you, and nobody who can say yes has been found.
+                Only said once there is a conversation worth worrying about. */}
+            {(() => {
+              const people = (contacts ?? []) as { deal_role: string | null }[];
+              const active = ['contacted', 'in_conversation', 'committed'].includes(c.status);
+              const hasDecider = people.some((p) => p.deal_role === 'decision_maker');
+              const hasChampion = people.some((p) => p.deal_role === 'champion');
+              if (!active || people.length === 0 || hasDecider) return null;
+              return (
+                <p className="border-b border-black/[0.06] bg-warn/[0.08] px-5 py-2 text-xs text-black/65">
+                  {hasChampion ? 'You have a champion, but nobody' : 'Nobody'} here is marked as the
+                  decision-maker. Hover a contact and press Edit to set their role.
+                </p>
+              );
+            })()}
 
             {/* Grouped by division, then indented by who reports to whom —
                 six names in a flat list say nothing about who to ask when the

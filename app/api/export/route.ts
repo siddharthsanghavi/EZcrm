@@ -4,8 +4,8 @@ import { currentProfile, selectAll, serverClient } from '@/lib/supabase';
 
 const TABLES = {
   companies:
-    'name, type, tier, status, interest, phone, website, industry, employees, notes, created_at',
-  contacts: 'first_name, last_name, email, phone, title, notes, created_at, companies(name)',
+    'name, type, tier, status, interest, capabilities, phone, website, industry, employees, notes, created_at',
+  contacts: 'first_name, last_name, email, phone, title, deal_role, notes, created_at, companies(name)',
   activities: 'type, subject, body, occurred_at, companies(name)',
   // A company's places are their own export now that there can be several of
   // them: flattening three plants back into one company row would drop two.

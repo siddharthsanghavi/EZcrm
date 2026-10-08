@@ -18,6 +18,7 @@ const NAV = [
   { href: '/', label: 'Dashboard', key: null },
   { href: '/companies', label: 'Companies', key: 'companies' },
   { href: '/pipeline', label: 'Pipeline', key: null },
+  { href: '/calendar', label: 'Calendar', key: null },
   { href: '/map', label: 'Map', key: null },
   { href: '/contacts', label: 'Contacts', key: 'contacts' },
   { href: '/tasks', label: 'Tasks', key: 'tasks' },

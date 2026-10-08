@@ -86,6 +86,22 @@ access — this is the single easiest mistake to make in this schema.
   still surface a Postgres exception if the database ever says no — keep that,
   a plain `<form action>` swallows it and the control just snaps back.
 
+- **The calendar (`events`, migration `018`) stores instants, not dates.** A
+  date and time typed into the form mean the club's wall clock and are
+  converted with `zonedToInstant()`; every page files and labels events with
+  `wallClockIn()` / `timeLabelIn()` in the club zone. An event stored at exactly
+  00:00 club time is shown as all-day — that is what a blank start time saves.
+  `company_id` is nullable on purpose: a careers fair belongs to no company.
+  The audit trigger formats its date through `club_time_zone()`, which falls
+  back to UTC rather than raising, because a bad stored zone must never make an
+  insert fail.
+
+- **Capability tags are a `text[]` on companies**, GIN-indexed, filtered with
+  `contains`. Free text on purpose — no admin-defined tag list — with
+  `capability_counts()` feeding the suggestions and `setCapabilities` reusing an
+  existing tag's spelling on a case-insensitive match. That function is
+  SECURITY INVOKER: it must only ever count what the caller may see.
+
 - **Going cold is per stage**, configured in `settings` under `rotting`.
   `isCold()` in `lib/types.ts` says the rule in TypeScript and the companies
   page says the same thing to PostgREST as an OR of one clause per stage. They

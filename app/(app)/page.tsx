@@ -11,6 +11,11 @@ import {
   displayName,
   sinceLabel,
   todayIn,
+  dayLabelIn,
+  timeLabelIn,
+  wallClockIn,
+  EVENT_KIND_DOTS,
+  type CalendarEvent,
   type Status,
 } from '@/lib/types';
 import { TaskRow } from '@/components/task-row';
@@ -43,7 +48,7 @@ export default async function Dashboard() {
   // and counting them in TypeScript caps silently at the API's default row limit
   // — at 1,267 companies the dashboard read "1,000 tracked, 0 contacted", because
   // the one contacted company sorted past the cap.
-  const [total, statusCounts, { data: tasks }, { data: coldRows, count: coldCount }, feed, progress] =
+  const [total, statusCounts, { data: tasks }, { data: coldRows, count: coldCount }, feed, progress, { data: soon }] =
     await Promise.all([
       supabase.from('companies').select('id', { count: 'exact', head: true }),
       Promise.all(
@@ -76,6 +81,15 @@ export default async function Dashboard() {
       loadFeed({ limit: 8 }),
       // Needs the goal and zone from stage one, nothing from this stage.
       loadGoalProgress(goal, timeZone),
+      // The next two weeks of tours and events. Anything already under way
+      // still shows, so a tour that started an hour ago is not hidden.
+      supabase
+        .from('events')
+        .select('id, kind, title, starts_at, ends_at, company_id, companies(id, name)')
+        .gte('starts_at', new Date(Date.now() - 6 * 3600e3).toISOString())
+        .lt('starts_at', new Date(Date.now() + 14 * 864e5).toISOString())
+        .order('starts_at')
+        .limit(6),
     ]);
 
   const totalCompanies = total.count ?? 0;
@@ -215,6 +229,41 @@ export default async function Dashboard() {
                 </li>
               );
             })}
+          </ul>
+        </section>
+      )}
+
+      {(soon ?? []).length > 0 && (
+        <section className="card overflow-hidden">
+          <div className="flex items-center justify-between border-b border-black/10 px-5 py-3">
+            <h2 className="text-sm font-semibold">Coming up</h2>
+            <Link href="/calendar" className="text-xs text-black/45 hover:text-ink">
+              Calendar →
+            </Link>
+          </div>
+          <ul className="divide-y divide-black/5">
+            {((soon ?? []) as unknown as (CalendarEvent & { companies: { id: string; name: string } | null })[]).map(
+              (e) => (
+                <li key={e.id} className="flex items-baseline gap-3 px-5 py-3 text-sm">
+                  <span className="w-24 shrink-0 text-xs text-black/50">{dayLabelIn(timeZone, e.starts_at)}</span>
+                  <span aria-hidden className={`h-2 w-2 shrink-0 self-center rounded-full ${EVENT_KIND_DOTS[e.kind]}`} />
+                  <span className="min-w-0 flex-1 truncate">
+                    <span className="font-medium">{e.title}</span>
+                    {e.companies && (
+                      <>
+                        {' · '}
+                        <Link href={`/companies/${e.companies.id}`} className="text-black/55 hover:underline">
+                          {e.companies.name}
+                        </Link>
+                      </>
+                    )}
+                  </span>
+                  <span className="shrink-0 text-xs text-black/45">
+                    {wallClockIn(timeZone, e.starts_at).time === '00:00' ? 'All day' : timeLabelIn(timeZone, e.starts_at)}
+                  </span>
+                </li>
+              ),
+            )}
           </ul>
         </section>
       )}

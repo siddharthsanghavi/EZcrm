@@ -33,6 +33,7 @@ type Search = {
   tier?: string;
   type?: string;
   region?: string;
+  cap?: string;
   owner?: string;
   cold?: string;
   archived?: string;
@@ -62,7 +63,7 @@ export default async function CompaniesPage({
   // are peeled off here — everything downstream builds links from `sp` and would
   // otherwise carry them along for the rest of the session.
   const { deleted, kept, ...sp } = await searchParams;
-  const { status, tier, type, region, owner, cold, archived, q } = sp;
+  const { status, tier, type, region, cap, owner, cold, archived, q } = sp;
   const page = Math.max(1, Number.parseInt(sp.page ?? '1', 10) || 1);
 
   const supabase = await serverClient();
@@ -74,7 +75,7 @@ export default async function CompaniesPage({
       // One literal, however long: supabase-js parses this string as a type, and
       // a concatenation is `string` to the compiler, which collapses every row
       // field to an error type.
-      'id, name, website, industry, status, interest, type, tier, location_regions, location_cities, owner_id, amount, close_date, archived_at, last_touch_at, contacts(count), company_locations(id, label, city, region, is_primary, sort), profiles!companies_owner_id_fkey(full_name, email)',
+      'id, name, website, industry, status, interest, type, tier, location_regions, location_cities, owner_id, amount, close_date, archived_at, last_touch_at, capabilities, contacts(count), company_locations(id, label, city, region, is_primary, sort), profiles!companies_owner_id_fkey(full_name, email)',
       { count: 'exact' },
     )
     .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
@@ -105,6 +106,8 @@ export default async function CompaniesPage({
   // Any location in that region, not just the primary one — a company with a
   // plant in the Northwest belongs in the Northwest list.
   if (region) query = query.contains('location_regions', [region]);
+  // A GIN-indexed array containment: "every company tagged Robotics".
+  if (cap) query = query.contains('capabilities', [cap]);
   // "none" is a real filter — the unassigned pile is the one people work from.
   if (owner === 'none') query = query.is('owner_id', null);
   else if (owner) query = query.eq('owner_id', owner);
@@ -129,6 +132,7 @@ export default async function CompaniesPage({
     { data: companies, count, error },
     { data: facets },
     { data: regionRows },
+    { data: capRows },
     { data: members },
     { data: views },
     me,
@@ -147,6 +151,7 @@ export default async function CompaniesPage({
         .order('id')
         .range(lo, hi),
     ),
+    supabase.rpc('capability_counts'),
     supabase.from('profiles').select('id, full_name, email').order('email'),
     supabase
       .from('saved_views')
@@ -157,6 +162,7 @@ export default async function CompaniesPage({
 
   const types = [...new Set((facets ?? []).map((f) => f.type).filter(Boolean))].sort();
   const regions = [...new Set((regionRows ?? []).map((f) => f.region).filter(Boolean))].sort();
+  const capabilities = ((capRows ?? []) as { tag: string }[]).map((r) => r.tag);
 
   const writable = canWrite(me);
   const total = count ?? 0;
@@ -218,6 +224,15 @@ export default async function CompaniesPage({
             current={sp}
             param="region"
           />
+          {capabilities.length > 0 && (
+            <FilterSelect
+              label="Capability"
+              value={cap}
+              options={capabilities}
+              current={sp}
+              param="cap"
+            />
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-1">
@@ -331,6 +346,8 @@ export default async function CompaniesPage({
                             ? `${(c.company_locations ?? []).length} locations`
                             : null,
                           c.industry,
+                          // The first few tags: enough to say what they do.
+                          ((c.capabilities as string[] | null) ?? []).slice(0, 3).join(', ') || null,
                         ]
                           .filter(Boolean)
                           .join(' · ')}

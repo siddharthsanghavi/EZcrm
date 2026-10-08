@@ -2,11 +2,28 @@
 
 import { useState } from 'react';
 import { saveContact, setContactPlacement } from '@/app/actions';
-import { buildOrgTree, contactName, type Contact, type OrgNode } from '@/lib/types';
+import {
+  DEAL_ROLES,
+  DEAL_ROLE_LABELS,
+  DEAL_ROLE_STYLES,
+  buildOrgTree,
+  contactName,
+  type Contact,
+  type OrgNode,
+} from '@/lib/types';
 
 type Person = Pick<
   Contact,
-  'id' | 'company_id' | 'first_name' | 'last_name' | 'title' | 'email' | 'phone' | 'reports_to' | 'division'
+  | 'id'
+  | 'company_id'
+  | 'first_name'
+  | 'last_name'
+  | 'title'
+  | 'email'
+  | 'phone'
+  | 'reports_to'
+  | 'division'
+  | 'deal_role'
 >;
 
 type Editing = { id: string; mode: 'place' | 'details' } | null;
@@ -125,7 +142,14 @@ function Branch({
         )}
 
         <div className="min-w-0 flex-1">
-          <div className="font-medium">{contactName(c)}</div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="font-medium">{contactName(c)}</span>
+            {c.deal_role && (
+              <span className={`chip text-[10.5px] ${DEAL_ROLE_STYLES[c.deal_role]}`}>
+                {DEAL_ROLE_LABELS[c.deal_role]}
+              </span>
+            )}
+          </div>
           {c.title && <div className="text-xs text-black/50">{c.title}</div>}
           {c.email && (
             <a href={`mailto:${c.email}`} className="text-xs text-black/60 underline">
@@ -183,6 +207,18 @@ function Branch({
               <input name="last_name" defaultValue={c.last_name ?? ''} className="field mt-1 py-1.5" />
             </label>
           </div>
+
+          <label className="block text-xs text-black/45">
+            Role in the deal
+            <select name="deal_role" defaultValue={c.deal_role ?? ''} className="field mt-1 py-1.5">
+              <option value="">Not judged yet</option>
+              {DEAL_ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {DEAL_ROLE_LABELS[r]}
+                </option>
+              ))}
+            </select>
+          </label>
 
           <label className="block text-xs text-black/45">
             Title

@@ -16,6 +16,16 @@ export type Change = {
 
 export const CHANGELOG: Change[] = [
   {
+    date: '2026-10-08',
+    title: 'A calendar for tours, tags for what companies do, and who matters in each deal',
+    notes: [
+      'There is a Calendar now. Schedule a plant tour, a sponsorship call, a careers fair or a deadline; it shows on a month grid and as a list, and the next two weeks appear under Coming up on the dashboard. Times are in the club’s time zone from Settings → Club.',
+      'Every company page has a Tours & meetings panel. Scheduling from there fills in the company and offers its contacts as the host.',
+      'Companies can be tagged with what they actually do — CNC, robotics, PLC: Allen-Bradley, AS9100. Filter the Companies list by any tag, or click a tag on a company to see everyone who shares it. Tags you have used before are suggested, so the list stays tidy. CSV imports accept a capabilities column, separated with semicolons.',
+      'Contacts can be marked as champion, decision-maker, technical contact or gatekeeper (Edit on the contact). Once a company is in conversation, its page warns you if nobody is marked as the decision-maker — the usual reason a friendly conversation never becomes a tour.',
+    ],
+  },
+  {
     date: '2026-09-21',
     title: 'Marking a company committed no longer needs a date or a contact first',
     notes: [

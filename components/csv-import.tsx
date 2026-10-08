@@ -19,7 +19,7 @@ type DryRun = {
 } | null;
 
 const COMPANY_COLUMNS =
-  'name, type, tier, city, region, address, phone, website, industry, employees, status, interest, notes';
+  'name, type, tier, city, region, address, phone, website, industry, employees, capabilities, status, interest, notes';
 const CONTACT_COLUMNS = 'first_name, last_name, email, phone, title, company, notes';
 
 export function CsvImport() {

@@ -7,7 +7,7 @@
  */
 
 /** Filters that make up a view. `page` is deliberately not one of them. */
-export const VIEW_PARAMS = ['status', 'tier', 'type', 'region', 'owner', 'cold', 'q'] as const;
+export const VIEW_PARAMS = ['status', 'tier', 'type', 'region', 'cap', 'owner', 'cold', 'q'] as const;
 
 /**
  * Reduce a querystring to just the filters, in a fixed order, so the same set

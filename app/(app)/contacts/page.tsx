@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { currentProfile, serverClient } from '@/lib/supabase';
-import { canWrite, sinceLabel } from '@/lib/types';
+import { DEAL_ROLE_LABELS, DEAL_ROLE_STYLES, canWrite, sinceLabel, type DealRole } from '@/lib/types';
 import { deleteContact } from '@/app/actions';
 import { ContactForm } from '@/components/contact-form';
 import { EditContact, type EditableContact } from '@/components/edit-contact';
@@ -61,6 +61,11 @@ export default async function ContactsPage({
                         <div className="text-sm font-medium">
                           {c.first_name} {c.last_name}
                           {c.title && <span className="font-normal text-black/50"> · {c.title}</span>}
+                          {c.deal_role && (
+                            <span className={`chip ml-2 text-[10.5px] ${DEAL_ROLE_STYLES[c.deal_role as DealRole]}`}>
+                              {DEAL_ROLE_LABELS[c.deal_role as DealRole]}
+                            </span>
+                          )}
                         </div>
                         <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-black/55">
                           {company && (

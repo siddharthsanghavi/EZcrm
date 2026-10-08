@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { currentProfile, serverClient } from '@/lib/supabase';
 import { findDuplicate, type DuplicateMatch } from '@/lib/dedupe';
-import { INTERESTS, STATUSES, type Status } from '@/lib/types';
+import { INTERESTS, STATUSES, normalizeTag, type Status } from '@/lib/types';
 
 const MAX_ROWS = 2000;
 
@@ -115,6 +115,16 @@ export async function POST(request: Request) {
           tier: clean(row.tier ?? row.confidence),
           phone: clean(row.phone),
           employees: Number.isFinite(employees) ? employees : null,
+          // "CNC; Robotics; AS9100" — semicolons or pipes, since a comma would
+          // already have split the CSV cell.
+          capabilities: [
+            ...new Set(
+              (clean(row.capabilities ?? row.tags) ?? '')
+                .split(/[;|]/)
+                .map(normalizeTag)
+                .filter(Boolean),
+            ),
+          ],
           created_by: profile.id,
           // Not a column any more — carried alongside the row and peeled off
           // below into the company's primary location.

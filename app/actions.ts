@@ -5,12 +5,17 @@ import { redirect } from 'next/navigation';
 import { currentProfile, serverClient } from '@/lib/supabase';
 import {
   ACTIVITY_TYPES,
+  DEAL_ROLES,
   DEFAULT_TIME_ZONE,
+  EVENT_KINDS,
   INTERESTS,
   STATUSES,
   TIERS,
   isValidTimeZone,
+  normalizeTag,
+  zonedToInstant,
 } from '@/lib/types';
+import { loadTimeZone } from '@/lib/settings';
 import { normalizeViewQuery } from '@/lib/views';
 import { slugify, templatesFromMarkdown } from '@/lib/cold-email';
 
@@ -158,6 +163,135 @@ export async function saveCompany(formData: FormData) {
   revalidatePath('/companies');
   revalidatePath('/map');
   return { ok: true };
+}
+
+/** A deal role from a form, or null for "not judged" and anything unknown. */
+const dealRole = (v: FormDataEntryValue | null) =>
+  DEAL_ROLES.includes(v as never) ? (v as (typeof DEAL_ROLES)[number]) : null;
+
+// ------------------------------------------------------------------- calendar
+
+/**
+ * Create or edit a tour, meeting, club event or deadline.
+ *
+ * The date and time boxes mean the club's wall clock (Settings → Club), not the
+ * server's — a tour booked for 7:30pm is stored as the instant 7:30pm names in
+ * the club's zone. Without that, everything typed in Georgia would land four
+ * or five hours early.
+ */
+export async function saveEvent(formData: FormData) {
+  const { profile, supabase } = await requireMember();
+
+  const id = text(formData.get('id'));
+  const title = text(formData.get('title'));
+  if (!title) return { error: 'Give it a title — "Plant tour", "Sponsorship call".' };
+
+  const tz = await loadTimeZone();
+  const date = text(formData.get('date'));
+  if (!date) return { error: 'Pick a date.' };
+  const startTime = text(formData.get('start_time'));
+  const endTime = text(formData.get('end_time'));
+
+  // No start time means "sometime that day": stored at midnight, shown as all day.
+  const starts = zonedToInstant(tz, date, startTime ?? '00:00');
+  if (!starts) return { error: 'That date or time is not one the calendar understands.' };
+
+  let ends: Date | null = null;
+  if (endTime) {
+    ends = zonedToInstant(tz, date, endTime);
+    if (!ends) return { error: 'That end time is not one the calendar understands.' };
+    if (ends < starts) return { error: 'It ends before it starts.' };
+  }
+
+  const record = {
+    kind: oneOf(formData.get('kind'), EVENT_KINDS, 'tour'),
+    title,
+    starts_at: starts.toISOString(),
+    ends_at: ends?.toISOString() ?? null,
+    company_id: text(formData.get('company_id')),
+    contact_id: text(formData.get('contact_id')),
+    location: text(formData.get('location')),
+    notes: text(formData.get('notes')),
+  };
+
+  const { error } = id
+    ? await supabase.from('events').update(record).eq('id', id)
+    : await supabase.from('events').insert({ ...record, created_by: profile.id });
+  if (error) return { error: error.message };
+
+  revalidatePath('/calendar');
+  revalidatePath('/');
+  if (record.company_id) revalidatePath(`/companies/${record.company_id}`);
+  return { ok: true };
+}
+
+export async function deleteEvent(formData: FormData) {
+  const { supabase } = await requireMember();
+  const id = text(formData.get('id'));
+  if (!id) return { error: 'No event given.' };
+
+  // RLS lets you remove your own, or anyone's if you are an admin; anything
+  // else matches no rows, which looks exactly like success — so check.
+  const { data, error } = await supabase.from('events').delete().eq('id', id).select('company_id');
+  if (error) return { error: error.message };
+  if (!data || data.length === 0) {
+    return { error: 'Only the person who added this, or an admin, can remove it.' };
+  }
+
+  revalidatePath('/calendar');
+  revalidatePath('/');
+  if (data[0].company_id) revalidatePath(`/companies/${data[0].company_id}`);
+  return { ok: true };
+}
+
+// --------------------------------------------------------------- capabilities
+
+/**
+ * Replace a company's capability tags with the submitted list.
+ *
+ * The editor sends the whole list rather than "add one" or "remove one", which
+ * keeps this a single update; two members editing the same company's tags in
+ * the same minute is last-write-wins, which at five members is fine.
+ *
+ * Each tag reuses an existing tag's spelling when it matches case-insensitively,
+ * so "cnc" typed today joins yesterday's "CNC" rather than forking the filter.
+ */
+export async function setCapabilities(formData: FormData) {
+  const { supabase } = await requireMember();
+  const id = text(formData.get('company_id'));
+  if (!id) return { error: 'No company given.' };
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(String(formData.get('tags') ?? '[]'));
+  } catch {
+    return { error: 'Could not read the tags.' };
+  }
+  if (!Array.isArray(raw)) return { error: 'Could not read the tags.' };
+
+  const { data: existing } = await supabase.rpc('capability_counts');
+  const canonical = new Map(
+    ((existing ?? []) as { tag: string }[]).map((r) => [r.tag.toLowerCase(), r.tag]),
+  );
+
+  const seen = new Set<string>();
+  const tags: string[] = [];
+  for (const item of raw) {
+    const tag = normalizeTag(String(item));
+    if (!tag) continue;
+    const key = tag.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tags.push(canonical.get(key) ?? tag);
+  }
+  if (tags.length > 30) return { error: 'That is a lot of tags — keep it to 30.' };
+
+  const { error } = await supabase.from('companies').update({ capabilities: tags }).eq('id', id);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/companies/${id}`);
+  revalidatePath('/companies');
+  return { ok: true, tags };
 }
 
 // ------------------------------------------------------------------ locations
@@ -401,6 +535,7 @@ export async function saveContact(formData: FormData) {
     for (const field of fields) {
       if (formData.has(field)) patch[field] = text(formData.get(field));
     }
+    if (formData.has('deal_role')) patch.deal_role = dealRole(formData.get('deal_role'));
 
     const { error } = await supabase.from('contacts').update(patch).eq('id', id);
     if (error) return { error: error.message };
@@ -426,6 +561,7 @@ export async function saveContact(formData: FormData) {
     title: text(formData.get('title')),
     notes: text(formData.get('notes')),
     division: text(formData.get('division')),
+    deal_role: dealRole(formData.get('deal_role')),
   };
 
   const { error } = await supabase

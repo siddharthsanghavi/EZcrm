@@ -169,6 +169,8 @@ export type Company = {
    */
   location_regions: string[];
   location_cities: string[];
+  /** What the company does — "CNC", "Robotics", "AS9100". Free text, see 018. */
+  capabilities: string[];
   /** What the club expects this to be worth, if anything. */
   amount: number | null;
   /** When it lands — required before a company can be marked committed. */
@@ -179,6 +181,76 @@ export type Company = {
   last_touch_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+// --------------------------------------------------- deal roles, tags, events
+
+/**
+ * Who a contact is in getting to yes. The org chart says who reports to whom;
+ * this says who matters. A champion without a decision-maker is the commonest
+ * way a warm conversation never turns into a tour.
+ */
+export const DEAL_ROLES = ['champion', 'decision_maker', 'technical', 'gatekeeper'] as const;
+export type DealRole = (typeof DEAL_ROLES)[number];
+
+export const DEAL_ROLE_LABELS: Record<DealRole, string> = {
+  champion: 'Champion',
+  decision_maker: 'Decision-maker',
+  technical: 'Technical contact',
+  gatekeeper: 'Gatekeeper',
+};
+
+/** Pale chip per role; same light/dark treatment as the status chips. */
+export const DEAL_ROLE_STYLES: Record<DealRole, string> = {
+  champion: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-300',
+  decision_maker: 'bg-violet-100 text-violet-800 dark:bg-violet-400/15 dark:text-violet-300',
+  technical: 'bg-sky-100 text-sky-800 dark:bg-sky-400/15 dark:text-sky-300',
+  gatekeeper: 'bg-slate-100 text-slate-700 dark:bg-slate-400/15 dark:text-slate-300',
+};
+
+/**
+ * A capability tag, tidied: trimmed, inner whitespace collapsed, capped. Case
+ * is kept — "AS9100" and "PLC: Allen-Bradley" read wrong lower-cased — and the
+ * caller reuses an existing tag's spelling when one matches case-insensitively,
+ * so "cnc" typed today joins yesterday's "CNC" instead of forking it.
+ */
+export function normalizeTag(raw: string): string {
+  // Commas, braces, quotes and backslashes are structure in a Postgres array
+  // literal, which is how the list page's filter sends a tag: `{CNC, turning}`
+  // is two tags, so a tag containing a comma could be saved but never found.
+  return raw.replace(/[,{}"\\]/g, ' ').trim().replace(/\s+/g, ' ').slice(0, 40);
+}
+
+export const EVENT_KINDS = ['tour', 'meeting', 'event', 'deadline'] as const;
+export type EventKind = (typeof EVENT_KINDS)[number];
+
+export const EVENT_KIND_LABELS: Record<EventKind, string> = {
+  tour: 'Tour',
+  meeting: 'Meeting',
+  event: 'Club event',
+  deadline: 'Deadline',
+};
+
+/** A dot colour per kind, for the calendar and the lists. */
+export const EVENT_KIND_DOTS: Record<EventKind, string> = {
+  tour: 'bg-accent',
+  meeting: 'bg-sky-500',
+  event: 'bg-amber-500',
+  deadline: 'bg-rose-500',
+};
+
+/** A tour, meeting, club event or deadline. company_id null = club-wide. */
+export type CalendarEvent = {
+  id: string;
+  company_id: string | null;
+  contact_id: string | null;
+  kind: EventKind;
+  title: string;
+  starts_at: string;
+  ends_at: string | null;
+  location: string | null;
+  notes: string | null;
+  created_by: string | null;
 };
 
 /**
@@ -249,6 +321,8 @@ export type Contact = {
   reports_to: string | null;
   /** Free text: "Operations", "North Plant". Null means no division given. */
   division: string | null;
+  /** Who they are in getting to yes. Null means not yet judged. */
+  deal_role: DealRole | null;
   last_touch_at: string | null;
   created_at: string;
 };
@@ -557,14 +631,94 @@ export function todayIn(tz: string, at: Date = new Date()): string {
  * hour on either side of a DST change, where the first correction can itself
  * be an hour out.
  */
-function instantOf(tz: string, year: number, month: number, day: number): Date {
-  let guess = Date.UTC(year, month - 1, day);
+function instantOf(tz: string, year: number, month: number, day: number, hour = 0, minute = 0): Date {
+  const wanted = Date.UTC(year, month - 1, day, hour, minute);
+  let guess = wanted;
   for (let i = 0; i < 2; i++) {
     const p = partsIn(tz, new Date(guess));
     const readBack = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
-    guess -= readBack - Date.UTC(year, month - 1, day);
+    guess -= readBack - wanted;
   }
   return new Date(guess);
+}
+
+/**
+ * "2026-10-09" + "19:30" on the club's wall clock, as the instant it names.
+ * What a person types into a date and a time box means the club's local time,
+ * not the server's UTC — a tour booked for 7:30pm has to be 7:30pm in Georgia.
+ * Null if either part does not parse.
+ */
+export function zonedToInstant(tz: string, date: string, time = '00:00'): Date | null {
+  const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  const t = /^(\d{2}):(\d{2})$/.exec(time);
+  if (!d || !t) return null;
+  const [y, m, day] = [Number(d[1]), Number(d[2]), Number(d[3])];
+  const [h, min] = [Number(t[1]), Number(t[2])];
+  if (m < 1 || m > 12 || day < 1 || day > 31 || h > 23 || min > 59) return null;
+  return instantOf(tz, y, m, day, h, min);
+}
+
+/** The club-local date and time of an instant: { date: "2026-10-09", time: "19:30" }. */
+export function wallClockIn(tz: string, at: Date | string): { date: string; time: string } {
+  const when = typeof at === 'string' ? new Date(at) : at;
+  const p = partsIn(tz, when);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return { date: `${p.year}-${pad(p.month)}-${pad(p.day)}`, time: `${pad(p.hour)}:${pad(p.minute)}` };
+}
+
+/** "7:30 PM" in the club's zone. Formatted with an explicit zone, so it is
+ *  correct on the server too — not the trap the HANDOFF warns about. */
+export function timeLabelIn(tz: string, at: Date | string): string {
+  return new Date(at).toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' });
+}
+
+/** "Fri, Oct 9" in the club's zone. */
+export function dayLabelIn(tz: string, at: Date | string): string {
+  return new Date(at).toLocaleDateString('en-US', { timeZone: tz, weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+/**
+ * A Sunday-first month grid for "2026-10", in the club's zone: the weeks as
+ * calendar dates, and the UTC instants bounding the visible range (which spills
+ * into the neighbouring months to fill whole weeks). Calendar arithmetic is done
+ * on dates at noon UTC so no DST change can push a day into its neighbour.
+ */
+export function monthGrid(tz: string, month: string | undefined) {
+  const m = /^(\d{4})-(\d{2})$/.exec(month ?? '');
+  const today = todayIn(tz);
+  const year = m ? Number(m[1]) : Number(today.slice(0, 4));
+  const mon = m && Number(m[2]) >= 1 && Number(m[2]) <= 12 ? Number(m[2]) : Number(today.slice(5, 7));
+  const first = new Date(Date.UTC(year, mon - 1, 1, 12));
+  const start = new Date(first.getTime() - first.getUTCDay() * 864e5);
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+
+  const weeks: string[][] = [];
+  let cursor = start;
+  do {
+    const week: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      week.push(iso(cursor));
+      cursor = new Date(cursor.getTime() + 864e5);
+    }
+    weeks.push(week);
+  } while (cursor.getUTCMonth() === mon - 1);
+
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const prev = mon === 1 ? `${year - 1}-12` : `${year}-${pad(mon - 1)}`;
+  const next = mon === 12 ? `${year + 1}-01` : `${year}-${pad(mon + 1)}`;
+  const lastDay = weeks[weeks.length - 1][6];
+  const dayAfter = iso(new Date(new Date(lastDay + 'T12:00:00Z').getTime() + 864e5));
+
+  return {
+    month: `${year}-${pad(mon)}`,
+    label: first.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'long', year: 'numeric' }),
+    weeks,
+    prev,
+    next,
+    from: zonedToInstant(tz, weeks[0][0])!,
+    // Midnight, club time, after the last visible day.
+    to: zonedToInstant(tz, dayAfter)!,
+  };
 }
 
 /** Midnight at the start of today, this month, or this year — in `tz`. */

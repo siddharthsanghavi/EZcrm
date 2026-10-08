@@ -2,6 +2,7 @@ import 'server-only';
 
 import { serverClient } from '@/lib/supabase';
 import {
+  startOfPeriodIn,
   type GoalPeriod,
   type GoalProgress,
   type OutreachGoal,
@@ -40,17 +41,14 @@ export async function loadGoal(): Promise<OutreachGoal> {
 /**
  * Where each period starts, in the club's own reckoning.
  *
- * Calendar boundaries, computed from the server's clock: a "day" ends at
- * midnight, a "year" is January to December rather than the academic year. That
- * is a real limitation for a student club whose year starts in autumn — worth
- * changing the day somebody asks, and not worth a start-month setting nobody
- * has asked for yet.
+ * Calendar boundaries in the club's time zone (Settings → Club): a "day" ends
+ * at the club's midnight, not the server's — on UTC the daily target reset at
+ * 8pm in Georgia. A "year" is still January to December rather than the
+ * academic year; worth changing the day somebody asks, and not worth a
+ * start-month setting nobody has asked for yet.
  */
-function startOf(period: GoalPeriod): Date {
-  const now = new Date();
-  if (period === 'daily') return new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  if (period === 'monthly') return new Date(now.getFullYear(), now.getMonth(), 1);
-  return new Date(now.getFullYear(), 0, 1);
+function startOf(period: GoalPeriod, timeZone: string): Date {
+  return startOfPeriodIn(timeZone, period);
 }
 
 /**
@@ -60,7 +58,7 @@ function startOf(period: GoalPeriod): Date {
  * three periods and a few thousand rows this is cheaper to read than it is to
  * optimise, and an unset target costs nothing because it is never queried.
  */
-export async function loadGoalProgress(goal: OutreachGoal): Promise<GoalProgress[]> {
+export async function loadGoalProgress(goal: OutreachGoal, timeZone: string): Promise<GoalProgress[]> {
   const periods = (['daily', 'monthly', 'yearly'] as GoalPeriod[]).filter((p) => goal[p] !== null);
   if (periods.length === 0) return [];
 
@@ -68,7 +66,7 @@ export async function loadGoalProgress(goal: OutreachGoal): Promise<GoalProgress
 
   const counts = await Promise.all(
     periods.map(async (period) => {
-      const since = startOf(period).toISOString();
+      const since = startOf(period, timeZone).toISOString();
 
       if (goal.metric === 'contacted') {
         // Out of Prospect for the first time. `from_status` is null on the row

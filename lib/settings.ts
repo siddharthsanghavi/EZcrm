@@ -1,8 +1,10 @@
 import 'server-only';
 
+import { cache } from 'react';
+
 import { serverClient } from '@/lib/supabase';
 import { CLUB_DEFAULTS, type ClubDetails, type EmailTemplate } from '@/lib/cold-email';
-import { ROTTING_DEFAULTS, STATUSES, type RottingRules, type Status } from '@/lib/types';
+import { ROTTING_DEFAULTS, STATUSES, clubTimeZone, type RottingRules, type Status } from '@/lib/types';
 
 /**
  * Club settings and email templates, read server-side.
@@ -12,11 +14,20 @@ import { ROTTING_DEFAULTS, STATUSES, type RottingRules, type Status } from '@/li
  * with placeholders is a great deal better than a page that throws, and the
  * placeholders say plainly that something needs filling in.
  */
-export async function loadClubDetails(): Promise<ClubDetails> {
+export const loadClubDetails = cache(async function loadClubDetails(): Promise<ClubDetails> {
   const supabase = await serverClient();
   const { data } = await supabase.from('settings').select('value').eq('key', 'club').maybeSingle();
 
-  return { ...CLUB_DEFAULTS, ...((data?.value ?? {}) as Partial<ClubDetails>) };
+  const stored = (data?.value ?? {}) as Partial<ClubDetails>;
+  // The zone is validated on the way out, not only on the way in: a row edited
+  // by hand, or written by an older build, must not make every page throw on
+  // an Intl call. A bad value quietly means UTC, which is what it meant before.
+  return { ...CLUB_DEFAULTS, ...stored, timeZone: clubTimeZone(stored.timeZone) };
+});
+
+/** Just the zone, for pages that need "today" and nothing else about the club. */
+export async function loadTimeZone(): Promise<string> {
+  return (await loadClubDetails()).timeZone;
 }
 
 /**
@@ -55,7 +66,7 @@ export async function loadPublicClub(): Promise<{
  * configured this still wants a going-cold list, and one that quietly stopped
  * flagging anything would look like an app with nothing to do.
  */
-export async function loadRottingRules(): Promise<RottingRules> {
+export const loadRottingRules = cache(async function loadRottingRules(): Promise<RottingRules> {
   const supabase = await serverClient();
   const { data } = await supabase.from('settings').select('value').eq('key', 'rotting').maybeSingle();
 
@@ -68,9 +79,9 @@ export async function loadRottingRules(): Promise<RottingRules> {
     if (Number.isFinite(n) && n > 0) rules[status as Status] = n;
   }
   return rules;
-}
+});
 
-export async function loadTemplates(): Promise<EmailTemplate[]> {
+export const loadTemplates = cache(async function loadTemplates(): Promise<EmailTemplate[]> {
   const supabase = await serverClient();
   const { data } = await supabase
     .from('email_templates')
@@ -79,4 +90,4 @@ export async function loadTemplates(): Promise<EmailTemplate[]> {
     .order('name');
 
   return (data ?? []) as EmailTemplate[];
-}
+});

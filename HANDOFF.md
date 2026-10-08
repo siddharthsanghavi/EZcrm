@@ -277,6 +277,14 @@ showing an absolute time or bucketing by day/hour has to be a Client Component
 that resolves `Date.now()` after mount (the trackers use a `useState(null)` +
 `useEffect` skeleton so the first render still matches the server).
 
+The same trap bit "today": `new Date().toISOString().slice(0, 10)` on the
+server is tomorrow from 8pm Georgia time, so tasks due today went overdue at
+dinner and the daily outreach goal reset early. There is now a **club time
+zone** (Settings → Club, stored on the `club` settings row as an IANA name) and
+`todayIn(tz)` / `startOfPeriodIn(tz, period)` in `lib/types.ts`. Any server
+code that needs a calendar date uses those, never the clock directly. Default
+is UTC, which is what the app did before, so an unset zone changes nothing.
+
 While you're there: bucket to the top of the local hour, not to "now minus n
 hours". Rolling buckets labelled as clock hours mean a bar marked 6 PM actually
 covers 5:52–6:52.

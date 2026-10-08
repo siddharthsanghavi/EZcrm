@@ -10,6 +10,7 @@ import {
   daysSince,
   displayName,
   sinceLabel,
+  todayIn,
   type Status,
 } from '@/lib/types';
 import { TaskRow } from '@/components/task-row';
@@ -17,24 +18,32 @@ import { ActivityFeed } from '@/components/activity-feed';
 import { loadFeed } from '@/lib/audit';
 import { GoalProgressCard } from '@/components/goal-progress';
 import { loadGoal, loadGoalProgress } from '@/lib/goal';
-import { loadRottingRules } from '@/lib/settings';
+import { loadRottingRules, loadTimeZone } from '@/lib/settings';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Dashboard() {
   const supabase = await serverClient();
-  const writable = canWrite(await currentProfile());
-  const today = new Date().toISOString().slice(0, 10);
 
-  // The rotting rules decide which stages can go cold at all, so the cold query
-  // cannot be built until they are loaded.
-  const rotting = await loadRottingRules();
+  // Two stages, not six. Stage one is everything the queries below depend on:
+  // who is signed in (shared with the layout via cache()), the rotting rules
+  // that decide which stages can go cold, the zone that decides what "today"
+  // is, and the goal whose progress gets counted. Each of those used to be its
+  // own await, and every await is a full round trip to Supabase.
+  const [me, rotting, timeZone, goal] = await Promise.all([
+    currentProfile(),
+    loadRottingRules(),
+    loadTimeZone(),
+    loadGoal(),
+  ]);
+  const writable = canWrite(me);
+  const today = todayIn(timeZone);
 
   // Every count here is a `head: true` count, never a length. Selecting the rows
   // and counting them in TypeScript caps silently at the API's default row limit
   // — at 1,267 companies the dashboard read "1,000 tracked, 0 contacted", because
   // the one contacted company sorted past the cap.
-  const [total, statusCounts, { data: tasks }, { data: coldRows, count: coldCount }, feed] =
+  const [total, statusCounts, { data: tasks }, { data: coldRows, count: coldCount }, feed, progress] =
     await Promise.all([
       supabase.from('companies').select('id', { count: 'exact', head: true }),
       Promise.all(
@@ -65,12 +74,9 @@ export default async function Dashboard() {
       // Not just logged outreach any more: everything anyone did. See
       // supabase/migrations/013_deletions_audit_roles_and_org_chart.sql.
       loadFeed({ limit: 8 }),
+      // Needs the goal and zone from stage one, nothing from this stage.
+      loadGoalProgress(goal, timeZone),
     ]);
-
-  // Sequential on purpose: the progress queries depend on which targets are set,
-  // and an unset one is never queried at all.
-  const goal = await loadGoal();
-  const progress = await loadGoalProgress(goal);
 
   const totalCompanies = total.count ?? 0;
   const counts = Object.fromEntries(

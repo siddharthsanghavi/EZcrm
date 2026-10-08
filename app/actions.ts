@@ -3,7 +3,14 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { currentProfile, serverClient } from '@/lib/supabase';
-import { ACTIVITY_TYPES, INTERESTS, STATUSES, TIERS } from '@/lib/types';
+import {
+  ACTIVITY_TYPES,
+  DEFAULT_TIME_ZONE,
+  INTERESTS,
+  STATUSES,
+  TIERS,
+  isValidTimeZone,
+} from '@/lib/types';
 import { normalizeViewQuery } from '@/lib/views';
 import { slugify, templatesFromMarkdown } from '@/lib/cold-email';
 
@@ -889,11 +896,29 @@ export async function saveClubDetails(formData: FormData) {
   const ctx = await requireAdmin();
   if (!ctx) return { error: 'Only admins can change club settings.' };
 
+  // Rejected here, not coerced: an admin who typed "America/Atlanta" should be
+  // told, not silently put on UTC by the read-side fallback.
+  const timeZone = text(formData.get('timeZone')) ?? DEFAULT_TIME_ZONE;
+  if (!isValidTimeZone(timeZone)) {
+    return { error: `"${timeZone}" is not a time zone this server knows. Use an IANA name like America/New_York.` };
+  }
+
+  // Merged over what is already there rather than replacing the row: the same
+  // `club` row carries `contactEmail` for the public privacy and terms pages,
+  // and a save from this form must not wipe a field this form does not show.
+  const { data: existing } = await ctx.supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'club')
+    .maybeSingle();
+
   const value = {
+    ...((existing?.value ?? {}) as Record<string, unknown>),
     clubName: text(formData.get('clubName')) ?? '',
     school: text(formData.get('school')) ?? '',
     groupSize: text(formData.get('groupSize')) ?? '',
     visitLength: text(formData.get('visitLength')) ?? '',
+    timeZone,
   };
 
   const { error } = await ctx.supabase
@@ -905,6 +930,9 @@ export async function saveClubDetails(formData: FormData) {
 
   revalidatePath('/settings');
   revalidatePath('/companies');
+  // "Today" moved, so everything that reckons it has to be re-read.
+  revalidatePath('/');
+  revalidatePath('/tasks');
   return { ok: true };
 }
 

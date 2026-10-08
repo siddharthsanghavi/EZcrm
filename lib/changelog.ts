@@ -21,6 +21,8 @@ export const CHANGELOG: Change[] = [
     notes: [
       'The rule that refused “Committed” until a close date and a contact were on file is gone. It meant the person who had just got the yes was sent to two other forms before they could record it, and the second one only appeared after the first was done.',
       'Close date and amount are still there and the pipeline still uses them — add them when you have them.',
+      'Pages load faster. The dashboard used to wait on about eight trips to the database one after another, checking who you were three times along the way; it now makes two rounds. Who is signed in is looked up once per page instead of twice.',
+      'Settings → Club has a time zone. Until now “today” was reckoned on the server’s clock, which runs on UTC — so from 8pm in Georgia, a task due today was already overdue and the daily outreach target had reset. Pick your zone once; the form offers the one your browser is in.',
       'The pipeline board, the map, the filter dropdowns and the CSV exports all stopped at 1,000 rows without saying so. The board showed 994 prospects while the directory held 1,260, and “export everything” wrote 1,000 of 1,268 companies. All of them now read every row.',
     ],
   },

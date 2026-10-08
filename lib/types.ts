@@ -487,6 +487,94 @@ export const ACTIVE_STAGES: Status[] = ['contacted', 'in_conversation'];
 /** How long a company sits untouched before it counts as cold. */
 export const COLD_AFTER_DAYS = 21;
 
+// ----------------------------------------------------------------- the clock
+
+/**
+ * The club's time zone, and "today" reckoned in it.
+ *
+ * A Server Component runs on UTC on Vercel, so `new Date().toISOString()` is
+ * tomorrow for a club in Georgia from 8pm onwards: tasks due today went overdue
+ * at dinner, and the daily outreach goal reset four hours early. Everything
+ * that needs a calendar date on the server asks these instead of the clock.
+ *
+ * Stored on the `club` settings row as an IANA name ("America/New_York"). The
+ * default is UTC, which is exactly what the app did before the setting existed
+ * — a club that has not chosen one sees no change, and one that has sees the
+ * right day.
+ */
+export const DEFAULT_TIME_ZONE = 'UTC';
+
+/** True for an IANA zone this runtime can format in; false for typos. */
+export function isValidTimeZone(tz: unknown): tz is string {
+  if (typeof tz !== 'string' || !tz) return false;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The zone to use: the configured one if it is real, else the default. */
+export function clubTimeZone(configured: string | null | undefined): string {
+  return isValidTimeZone(configured) ? configured : DEFAULT_TIME_ZONE;
+}
+
+/** Calendar parts of an instant, as a wall clock in `tz` would show them. */
+function partsIn(tz: string, at: Date) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric',
+    second: 'numeric',
+  }).formatToParts(at);
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
+  return {
+    year: get('year'),
+    month: get('month'),
+    day: get('day'),
+    hour: get('hour'),
+    minute: get('minute'),
+    second: get('second'),
+  };
+}
+
+/** "2026-09-21" — the date it is in `tz` right now (or at `at`). */
+export function todayIn(tz: string, at: Date = new Date()): string {
+  const { year, month, day } = partsIn(tz, at);
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+/**
+ * The instant at which a given wall-clock date/time occurs in `tz`.
+ *
+ * Guess it as if the wall clock were UTC, measure how far off that guess lands
+ * when read back in `tz`, and correct by that much. One more pass catches the
+ * hour on either side of a DST change, where the first correction can itself
+ * be an hour out.
+ */
+function instantOf(tz: string, year: number, month: number, day: number): Date {
+  let guess = Date.UTC(year, month - 1, day);
+  for (let i = 0; i < 2; i++) {
+    const p = partsIn(tz, new Date(guess));
+    const readBack = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+    guess -= readBack - Date.UTC(year, month - 1, day);
+  }
+  return new Date(guess);
+}
+
+/** Midnight at the start of today, this month, or this year — in `tz`. */
+export function startOfPeriodIn(tz: string, period: 'daily' | 'monthly' | 'yearly', at: Date = new Date()): Date {
+  const { year, month, day } = partsIn(tz, at);
+  if (period === 'daily') return instantOf(tz, year, month, day);
+  if (period === 'monthly') return instantOf(tz, year, month, 1);
+  return instantOf(tz, year, 1, 1);
+}
+
 /** Whole days since a touch. Null (never touched) sorts as the coldest. */
 export function daysSince(iso: string | null | undefined): number | null {
   if (!iso) return null;

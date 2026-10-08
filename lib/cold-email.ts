@@ -1,4 +1,4 @@
-import { contactName, type Company, type Contact, type Interest } from '@/lib/types';
+import { DEFAULT_TIME_ZONE, contactName, type Company, type Contact, type Interest } from '@/lib/types';
 
 /**
  * Cold-email drafting.
@@ -35,6 +35,8 @@ export type ClubDetails = {
   school: string;
   groupSize: string;
   visitLength: string;
+  /** IANA zone the club's "today" is reckoned in. See `todayIn` in lib/types. */
+  timeZone: string;
 };
 
 export const CLUB_DEFAULTS: ClubDetails = {
@@ -42,6 +44,7 @@ export const CLUB_DEFAULTS: ClubDetails = {
   school: '[YOUR SCHOOL]',
   groupSize: '[GROUP SIZE]',
   visitLength: '[LENGTH]',
+  timeZone: DEFAULT_TIME_ZONE,
 };
 
 export type DraftInput = {

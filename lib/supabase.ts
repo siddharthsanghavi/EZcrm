@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { cache } from 'react';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
@@ -64,8 +65,16 @@ export async function selectAll<T>(
   }
 }
 
-/** Current user's profile, or null if they aren't a club member. */
-export async function currentProfile() {
+/**
+ * Current user's profile, or null if they aren't a club member.
+ *
+ * Memoised per request with React `cache()`. The layout and the page both ask
+ * who is signed in, and without this each made its own `auth.getUser()` round
+ * trip to Supabase Auth followed by its own `profiles` lookup — two of the
+ * dashboard's ~8 back-to-back network trips were this, done twice. `cache()`
+ * is scoped to one server render, so nothing leaks between users or requests.
+ */
+export const currentProfile = cache(async function currentProfile() {
   const supabase = await serverClient();
   const {
     data: { user },
@@ -79,4 +88,4 @@ export async function currentProfile() {
     .maybeSingle();
 
   return data;
-}
+});

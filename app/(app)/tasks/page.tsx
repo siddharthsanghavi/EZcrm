@@ -1,5 +1,6 @@
 import { currentProfile, serverClient } from '@/lib/supabase';
-import { canWrite } from '@/lib/types';
+import { loadTimeZone } from '@/lib/settings';
+import { canWrite, todayIn } from '@/lib/types';
 import { TaskRow } from '@/components/task-row';
 import { QuickTaskForm } from '@/components/quick-task-form';
 
@@ -9,7 +10,9 @@ export default async function TasksPage() {
   const supabase = await serverClient();
   const me = await currentProfile();
   const writable = canWrite(me);
-  const today = new Date().toISOString().slice(0, 10);
+  // In the club's zone, not the server's: "due today" has to mean the club's
+  // today, or every task goes overdue at dinner time.
+  const today = todayIn(await loadTimeZone());
 
   const { data: tasks } = await supabase
     .from('tasks')

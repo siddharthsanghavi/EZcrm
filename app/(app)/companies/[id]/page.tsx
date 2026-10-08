@@ -19,6 +19,7 @@ import {
   money,
   primaryLocation,
   sinceLabel,
+  todayIn,
   type Company,
   type CompanyLocation,
   type Status,
@@ -121,7 +122,7 @@ export default async function CompanyPage({
       .order('created_at', { ascending: false }),
   ]);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIn(club.timeZone);
   const c = company as Company;
   type LocationRow = Pick<
     CompanyLocation,

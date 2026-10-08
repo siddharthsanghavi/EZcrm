@@ -37,7 +37,9 @@ export default async function PipelinePage() {
     profiles: { full_name: string | null; email: string } | null;
   };
 
-  const [{ data: companies }, { data: events }, { data: members }] = await Promise.all([
+  // One round, not two: the profile and the rotting rules used to be fetched
+  // only after everything else had come back.
+  const [{ data: companies }, { data: events }, { data: members }, me, rotting] = await Promise.all([
     // The board draws every company, so it has to have every company. A plain
     // `.limit(5000)` returned exactly 1,000 — see `selectAll`.
     selectAll<Row>((from, to) =>
@@ -60,6 +62,8 @@ export default async function PipelinePage() {
       .order('changed_at', { ascending: false })
       .limit(400),
     supabase.from('profiles').select('id, full_name, email').order('email'),
+    currentProfile(),
+    loadRottingRules(),
   ]);
 
   const rows = companies ?? [];
@@ -84,7 +88,6 @@ export default async function PipelinePage() {
 
   const recent = (events ?? []).filter((e) => e.from_status).slice(0, 12);
 
-  const [me, rotting] = await Promise.all([currentProfile(), loadRottingRules()]);
 
   // Money, weighted by how likely each stage is to land. Committed counts in
   // full; declined and dormant count for nothing.
